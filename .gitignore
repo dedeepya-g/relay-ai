@@ -14,8 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -216,3 +216,30 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Relay ------------------------------------------------------------------
+
+# Service account keys (local development only; never commit).
+keys/
+*-service-account.json
+
+# Node / frontend
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Vite environment overrides (.env is already ignored above).
+.env.local
+.env.*.local
+
+# macOS
+.DS_Store
+
+# TypeScript incremental build info
+*.tsbuildinfo

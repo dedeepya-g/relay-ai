@@ -1,0 +1,16 @@
+# Web framework and ASGI server (Cloud Run entrypoint).
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.12
+
+# Google Cloud data plane.
+google-cloud-firestore>=2.19.0
+google-cloud-storage>=2.18.0
+
+# Gemini model access and agent orchestration.
+google-genai>=1.0.0
+google-adk>=1.0.0
+
+# Configuration and validation.
+python-dotenv>=1.0.1
+pydantic>=2.9.0
