@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 
 _ENV_FILE = Path(__file__).resolve().parent / ".env"
 
-DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
+DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+DEFAULT_GEMINI_LOCATION = "us-central1"
 DEFAULT_FIRESTORE_DATABASE = "(default)"
 DEFAULT_CAMPUS_ID = "relay-university"
 DEFAULT_SIGNED_URL_TTL_SECONDS = 3600
@@ -88,9 +89,10 @@ class Settings:
     """Immutable snapshot of the runtime configuration.
 
     Attributes:
-        project_id: Google Cloud project owning Firestore and Cloud Storage.
-        gemini_api_key: API key used by the Google GenAI SDK.
+        project_id: Google Cloud project owning Firestore, Cloud Storage, and
+            the Vertex AI endpoint serving Gemini.
         gemini_model: Gemini model id used for all reasoning calls.
+        gemini_location: Vertex AI region serving the model.
         firestore_database: Firestore database id.
         storage_bucket: Cloud Storage bucket holding report photos.
         campus_id: Campus configuration document driving routing and SLAs.
@@ -101,8 +103,8 @@ class Settings:
     """
 
     project_id: str
-    gemini_api_key: str
     gemini_model: str
+    gemini_location: str
     firestore_database: str
     storage_bucket: str
     campus_id: str
@@ -125,8 +127,10 @@ class Settings:
         """
         return cls(
             project_id=_required("GOOGLE_CLOUD_PROJECT"),
-            gemini_api_key=_required("GEMINI_API_KEY"),
             gemini_model=_optional("RELAY_GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
+            gemini_location=_optional(
+                "RELAY_GEMINI_LOCATION", DEFAULT_GEMINI_LOCATION
+            ),
             firestore_database=_optional(
                 "RELAY_FIRESTORE_DATABASE", DEFAULT_FIRESTORE_DATABASE
             ),
@@ -154,10 +158,11 @@ def get_settings() -> Settings:
     load_dotenv(_ENV_FILE, override=False)
     settings = Settings.from_env()
     logger.info(
-        "Loaded Relay settings (project=%s, environment=%s, model=%s)",
+        "Loaded Relay settings (project=%s, environment=%s, model=%s @ %s)",
         settings.project_id,
         settings.environment,
         settings.gemini_model,
+        settings.gemini_location,
     )
     return settings
 

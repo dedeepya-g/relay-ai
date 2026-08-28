@@ -1,15 +1,26 @@
-"""Thin wrapper around the Google GenAI SDK.
+"""Thin wrapper around the Google GenAI SDK, backed by Vertex AI.
 
 Centralizes model selection, retries, and structured-output parsing so agent
 tools deal in typed Python objects instead of raw SDK responses.
+
+The client runs in Vertex AI mode rather than AI Studio API-key mode: requests
+are authorized by Application Default Credentials and billed to the project's
+existing Google Cloud billing account, so no separate Gemini API key exists to
+provision, rotate, or leak. Locally that means ``gcloud auth
+application-default login``; on Cloud Run it means the runtime service account,
+which needs the Vertex AI User role.
 """
 
 from __future__ import annotations
 
 import logging
+from functools import lru_cache
 from typing import Any, TypeVar
 
+from google import genai
 from pydantic import BaseModel
+
+from config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +32,27 @@ DEFAULT_MAX_RETRIES = 2
 
 class GeminiError(RuntimeError):
     """Raised when a Gemini call fails or returns unusable output."""
+
+
+@lru_cache(maxsize=1)
+def get_client() -> genai.Client:
+    """Return the cached Vertex AI client.
+
+    Constructed lazily so importing this module never requires credentials.
+    The client is thread-safe and holds pooled connections, so it is built once
+    per process rather than per request.
+    """
+    settings = get_settings()
+    logger.debug(
+        "Creating Vertex AI client (project=%s, location=%s)",
+        settings.project_id,
+        settings.gemini_location,
+    )
+    return genai.Client(
+        vertexai=True,
+        project=settings.project_id,
+        location=settings.gemini_location,
+    )
 
 
 def generate_text(
