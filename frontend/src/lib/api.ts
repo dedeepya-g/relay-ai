@@ -91,18 +91,28 @@ export function submitReport(input: SubmitReportInput): Promise<ReportIntakeResu
   return request<ReportIntakeResult>('/reports', { method: 'POST', body })
 }
 
+/**
+ * Apply a reviewer's decision to a paused report.
+ *
+ * `note` is the reviewer's own reasoning and is recorded in the audit trail in
+ * place of the default rationale. An empty note is sent as null rather than as
+ * a filler string, so the trail reads as "no reason given" instead of
+ * attributing words to a person who never wrote them.
+ */
 export function resolveReview(
   reportId: string,
   resolution: 'same_incident' | 'different_incident',
   incidentId?: string,
+  note?: string,
 ): Promise<{ report_id: string; outcome: string; incident_id: string }> {
+  const trimmed = note?.trim()
   return request(`/reports/${reportId}/resolve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       resolution,
       incident_id: incidentId ?? null,
-      note: 'Resolved from the facilities dashboard.',
+      note: trimmed ? trimmed : null,
     }),
   })
 }

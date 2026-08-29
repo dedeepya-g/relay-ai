@@ -11,6 +11,7 @@ import { StatusBar } from './components/StatusBar'
 import { DetailView } from './views/DetailView'
 import { IntakeView } from './views/IntakeView'
 import { QueueView } from './views/QueueView'
+import { buildAttention } from './lib/format'
 import {
   getCampus,
   getIncident,
@@ -117,19 +118,17 @@ export default function App() {
       reportId: string,
       resolution: 'same_incident' | 'different_incident',
       incidentId?: string,
+      note?: string,
     ) => {
-      await resolveReview(reportId, resolution, incidentId)
+      await resolveReview(reportId, resolution, incidentId, note)
       await refresh()
     },
     [refresh],
   )
 
-  const attentionCount =
-    reviews.length +
-    incidents.filter((incident) => {
-      if (!incident.sla_due_at) return false
-      return new Date(incident.sla_due_at).getTime() - now <= 60_000
-    }).length
+  // Same function the queue band renders from, so the header count and the
+  // rows below it are always the same set.
+  const attentionCount = buildAttention(incidents, reviews, now).length
   const criticalCount = incidents.filter((item) => item.priority === 'critical').length
 
   return (

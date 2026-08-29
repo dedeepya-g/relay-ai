@@ -299,10 +299,10 @@ p {
   color: var(--high);
   background: var(--warn-tint);
 }
+/* The one filled tag: escalation is the only state the board shouts about. */
 .tag--escalated {
-  color: var(--critical);
-  background: var(--critical);
   color: var(--paper);
+  background: var(--critical);
   border-color: var(--critical);
 }
 
@@ -454,10 +454,11 @@ p {
   background: var(--ground);
 }
 
+/* Indented to clear the flag column, so the body lines up under the report
+   text rather than under the tag. */
 .review__body {
-  padding: 0 1rem 1rem 11.375rem;
+  padding: 0.875rem 1rem 1rem 11.375rem;
   border-top: 1px dashed var(--rule);
-  padding-top: 0.875rem;
 }
 
 .review__why {

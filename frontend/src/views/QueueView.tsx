@@ -10,14 +10,14 @@ import { useState } from 'react'
 import { AttentionTag } from '../components/AttentionTag'
 import { PriorityToken } from '../components/PriorityToken'
 import {
-  type AttentionItem,
-  attentionReason,
+  type AttentionReason,
+  buildAttention,
+  floorLabel,
   formatAge,
   formatCountdown,
   locationLine,
   PRIORITY_RANK,
   secondsUntil,
-  sortAttention,
 } from '../lib/format'
 import type { Campus, IncidentSummary, PendingReview } from '../lib/types'
 
@@ -31,6 +31,7 @@ interface QueueProps {
     reportId: string,
     resolution: 'same_incident' | 'different_incident',
     incidentId?: string,
+    note?: string,
   ) => Promise<void>
 }
 
@@ -42,7 +43,7 @@ interface QueueProps {
  */
 function preciseLocation(incident: IncidentSummary): string {
   if (incident.room) return `Room ${incident.room}`
-  if (incident.floor) return incident.floor === 'B1' ? 'Basement' : `Floor ${incident.floor}`
+  if (incident.floor) return floorLabel(incident.floor)
   return 'Location not given'
 }
 
@@ -76,7 +77,7 @@ function IncidentRow({
 }: {
   incident: IncidentSummary
   now: number
-  reason?: ReturnType<typeof attentionReason>
+  reason?: AttentionReason
   secondary: string
   onOpen: (id: string) => void
 }) {
@@ -114,6 +115,7 @@ function ReviewRow({
 }) {
   const [open, setOpen] = useState(false)
   const [target, setTarget] = useState('')
+  const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -124,7 +126,7 @@ function ReviewRow({
     setBusy(true)
     setError(null)
     try {
-      await onResolve(review.report_id, resolution, incidentId)
+      await onResolve(review.report_id, resolution, incidentId, note)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'That did not go through.')
       setBusy(false)
@@ -159,6 +161,25 @@ function ReviewRow({
             </span>
             {review.reasoning || 'Relay could not place this report against an open incident.'}
           </p>
+
+          {/* The note is written into the permanent decision trail, so it asks
+              for the reviewer's own words. Left blank, the server records its
+              default rationale rather than a sentence nobody wrote. */}
+          <div className="field" style={{ marginBottom: '0.875rem', maxWidth: '60ch' }}>
+            <label className="label" htmlFor={`note-${review.report_id}`}>
+              Your reasoning <span style={{ textTransform: 'none' }}>· optional</span>
+            </label>
+            <input
+              id={`note-${review.report_id}`}
+              className="input"
+              type="text"
+              value={note}
+              maxLength={2000}
+              disabled={busy}
+              placeholder="Resolved from the facilities dashboard."
+              onChange={(event) => setNote(event.target.value)}
+            />
+          </div>
 
           <div className="review__actions">
             <select
@@ -212,16 +233,11 @@ export function QueueView({
   onOpen,
   onResolve,
 }: QueueProps) {
-  const flagged = incidents
-    .map((incident) => ({ incident, reason: attentionReason(incident, now) }))
-    .filter((entry) => entry.reason !== null)
+  const attention = buildAttention(incidents, reviews, now)
 
-  const attention: AttentionItem[] = sortAttention([
-    ...reviews.map((review) => ({ reason: 'review' as const, review })),
-    ...flagged.map((entry) => ({ reason: entry.reason!, incident: entry.incident })),
-  ])
-
-  const flaggedIds = new Set(flagged.map((entry) => entry.incident.incident_id))
+  const flaggedIds = new Set(
+    attention.flatMap((item) => (item.incident ? [item.incident.incident_id] : [])),
+  )
   const rest = incidents.filter((incident) => !flaggedIds.has(incident.incident_id))
 
   const byTeam = new Map<string, IncidentSummary[]>()
