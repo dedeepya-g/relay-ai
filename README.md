@@ -171,6 +171,8 @@ Interactive documentation is served at `/docs` while the backend is running.
 ## Team
 
 Dedeepya Guntaka
+Swetha Jalluri
+Likhitha Guntaka
 
 ## Built For
 
