@@ -1,6 +1,33 @@
 # Relay-ai
 
-Relay is an AI campus maintenance coordinator built with Gemini 3.5. It understands facility reports (photo, text, voice), detects duplicates, assigns priority, routes to the right team, and tracks issues to resolution, auto-escalating anything overdue. Built for All Things Agentic Hackathon (Taskmaster track).
+Relay is an AI campus facilities coordination agent for "Relay University," a
+fictional demo campus. It reads a facility report written in plain language,
+classifies it, detects when several reports describe the same underlying
+problem and merges them into a single incident, then assigns priority and
+routes the incident to the maintenance team that owns it. Every decision is
+recorded with its reasoning.
+
+Built with Gemini 3.5 on Vertex AI for the All Things Agentic Hackathon
+(Taskmaster track).
+
+## Status
+
+Built and tested end to end: report classification, duplicate detection with a
+human-review path for ambiguous cases, deterministic priority and SLA
+derivation, and routing to the owning team. A photo attached to a report is
+analyzed alongside its text.
+
+Not yet implemented:
+
+- Work order dispatch, resolution tracking, and overdue escalation
+  (`create_work_order`, `update_incident_status`,
+  `escalate_overdue_incidents`).
+- Photo upload and signed-URL serving (`upload_report_photo`,
+  `generate_signed_url`). Photo analysis works against a stored object, but
+  nothing stores one yet.
+- HTTP intake. The API exposes only `/healthz`, so the pipeline currently runs
+  from Python rather than from the React frontend, which is still a scaffold.
+- Voice intake. `ReportSource.VOICE` is an unused enum value.
 
 ## How Relay reasons
 
