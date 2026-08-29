@@ -39,13 +39,20 @@ A submitted report passes through six stages.
 6. **Dispatch.** A work order is raised with field instructions built from what
    each reporter actually said.
 
+Once those stages finish, the Incident Coordinator reads the resulting state
+and decides what follow-up it warrants: telling the assigned team about a
+priority change, running an escalation check, asking a reporter for a detail
+that would place an unplaceable report, or judging that nothing is needed. It
+cannot revisit any of the decisions above.
+
 A separate sweep escalates any incident that passes its deadline, raising it
 through the campus escalation policy until it is resolved or reaches the
 configured maximum level.
 
-Every stage writes a decision record with its reasoning, whether an agent or a
-person decided it, and which model produced the judgement. Those records are
-what an operator reads when asking why an incident was handled as it was.
+Every decision is recorded with its reasoning, what executed it, and the model
+behind it where there was one. Triage's classification is stored on the report
+itself. Together these are what an operator reads when asking why an incident
+was handled as it was.
 
 ## Architecture
 
@@ -69,18 +76,37 @@ flowchart TD
     W --> E["Escalate on breach<br/><i>rule</i>"]
 ```
 
-The model is used in exactly two places, and both are genuine judgements about
-ambiguous language: deciding what a report is about, and deciding whether two
-reports describe one fault. Everything after that is deterministic rule
-application over campus configuration, so the same evidence always produces the
-same priority, the same team, and the same escalation — which is what makes an
-escalation defensible when someone asks why a work order jumped the queue.
+Gemini is used for three things, each a judgement no rule can make: what a
+report is about, whether two reports describe one fault, and what follow-up an
+incident's new state warrants. Everything between them — priority, routing,
+dispatch, escalation — is deterministic rule application over campus
+configuration, so the same evidence always produces the same priority, the same
+team, and the same escalation. That is what makes an escalation defensible when
+someone asks why a work order jumped the queue.
+
+### Execution types
+
+Every decision Relay records names what executed it, because three different
+kinds of act would otherwise be indistinguishable in the audit trail.
+
+| Executor | Role | Used by |
+| --- | --- | --- |
+| `model` | Probabilistic interpretation | Deduplication |
+| `rule` | Deterministic policy | Priority, routing, escalation, status transitions |
+| `agent` | State-aware coordination | The Incident Coordinator |
+| `human` | Explicit human judgement | Resolving a paused report |
+
+A single report produces all three automated kinds in sequence: a model judges
+whether it duplicates an open incident, rules apply campus policy to set
+priority and choose a team, and the coordinator decides what follow-up the
+resulting state warrants. Triage is a model judgement too, but its output is
+stored on the report rather than as a separate decision record.
 
 **Why each piece.** Gemini handles the natural-language judgements the rest of
 the system deliberately avoids. Firestore holds reports, incidents, work
 orders, and the decision log, and its document model fits records that
-accumulate evidence over time. Cloud Storage holds report photos. The backend
-is FastAPI because the pipeline is a set of typed request-response operations,
+accumulate evidence over time. Cloud Storage is provisioned for report photos.
+The backend is FastAPI because the pipeline is typed request-response work,
 and Pydantic validation at the boundary means a malformed model response fails
 loudly rather than reaching the database. The frontend is a small React
 application because the operations view is read-heavy and needs live SLA
@@ -88,11 +114,21 @@ counters.
 
 ## Tech Stack
 
-- **Gemini 3.5 Flash** (via Vertex AI) — report classification and duplicate
-  detection
-- **Google ADK** — *dependency present; orchestration layer not yet built*
+- **Gemini 3.5 Flash** (via Vertex AI) — report classification, duplicate
+  detection, and the coordinator's reasoning
+- **Google ADK**: Powers Relay's Incident Coordinator, which observes evolving
+  incident state and selects constrained follow-up actions such as retrieving
+  incident context, requesting missing information, notifying teams of priority
+  changes, running escalation checks, or deliberately taking no action when the
+  current state does not require intervention.
+
+  Relay intentionally separates model judgment, deterministic operational
+  policy, and agent coordination. Gemini handles ambiguous interpretation and
+  deduplication, rule-based services enforce reproducible priority and routing
+  policies, and the ADK coordinator decides what follow-up action is
+  appropriate after the incident state changes.
 - **Firestore** — reports, incidents, work orders, decision log
-- **Cloud Storage** — report photos
+- **Cloud Storage** — report photos; *bucket provisioned, upload not yet built*
 - **Cloud Run** — *target deployment; not yet deployed*
 - **FastAPI / Python 3.12+** — backend
 - **React / TypeScript / Vite** — operations dashboard
