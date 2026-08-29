@@ -132,16 +132,31 @@ def create_incident(incident: Incident) -> Incident:
 
 def get_incident(incident_id: str) -> Incident | None:
     """Fetch one incident by id, or ``None`` if it does not exist."""
-    raise NotImplementedError
+    snapshot = _collection(INCIDENTS_COLLECTION).document(incident_id).get()
+    if not snapshot.exists:
+        return None
+    return Incident.from_firestore(snapshot.id, snapshot.to_dict())
 
 
 def update_incident(incident_id: str, fields: dict[str, object]) -> Incident:
     """Apply a partial update to an incident, refreshing ``updated_at``.
 
+    Args:
+        incident_id: Incident to update.
+        fields: Field paths to values.
+
+    Returns:
+        The incident as stored after the update.
+
     Raises:
         KeyError: If the incident does not exist.
     """
-    raise NotImplementedError
+    document = _collection(INCIDENTS_COLLECTION).document(incident_id)
+    if not document.get().exists:
+        raise KeyError(f"No incident {incident_id!r}.")
+    document.update({**fields, "updated_at": utc_now()})
+    snapshot = document.get()
+    return Incident.from_firestore(snapshot.id, snapshot.to_dict())
 
 
 def list_open_incidents(campus_id: str, limit: int = 100) -> list[Incident]:
@@ -236,8 +251,21 @@ def list_work_orders_for_incident(incident_id: str) -> list[WorkOrder]:
 
 
 def record_decision(decision: Decision) -> Decision:
-    """Append a decision to the audit trail."""
-    raise NotImplementedError
+    """Append a decision to the audit trail.
+
+    Decisions are append-only. Relay never rewrites one, because the record of
+    what it decided at the time is the point.
+    """
+    _collection(DECISIONS_COLLECTION).document(decision.id).set(
+        decision.to_firestore()
+    )
+    logger.info(
+        "Recorded %s decision %s on %s",
+        decision.decision_type.value,
+        decision.id,
+        decision.subject_id,
+    )
+    return decision
 
 
 def list_decisions_for_subject(subject_id: str, limit: int = 50) -> list[Decision]:

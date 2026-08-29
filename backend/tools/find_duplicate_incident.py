@@ -14,15 +14,22 @@ import logging
 from datetime import timedelta
 from typing import Any
 
+from config import get_settings
+from models.common import DecisionType, ReportStatus, utc_now
+from models.decision import Decision
 from models.duplicate import DuplicateDecision, DuplicateVerdict
 from models.incident import Incident
 from models.report import Report
 from services.firestore_service import (
+    get_report,
     list_deduplication_candidates,
     list_reports_for_incident,
+    record_decision,
+    update_report,
 )
-from services.gemini_service import generate_structured
-from models.common import utc_now
+from services.gemini_service import GeminiError, generate_structured
+from tools.merge_report_into_incident import merge_report_into_incident
+from tools.open_incident import open_incident
 
 logger = logging.getLogger(__name__)
 
@@ -303,20 +310,116 @@ def compare_incidents(
     return decision
 
 
+def _record(
+    report: Report,
+    decision: DuplicateDecision,
+    outcome: str,
+    candidates: list[Incident],
+) -> None:
+    """Append this deduplication judgment to the audit trail.
+
+    Written for every outcome, not only ambiguous ones. "Why is this a separate
+    incident?" needs an answer as much as "why were these merged?", and the
+    candidates considered are part of that answer: they show what the decision
+    was made against, including the incidents it ruled out.
+    """
+    record_decision(
+        Decision(
+            campus_id=report.campus_id,
+            decision_type=DecisionType.DEDUPLICATION,
+            subject_type="reports",
+            subject_id=report.id,
+            outcome=outcome,
+            rationale=decision.reasoning,
+            tool_name="find_duplicate_incident",
+            model=get_settings().gemini_model,
+            inputs={
+                "description": report.description,
+                "category": report.category.value if report.category else None,
+                "building_id": report.location.building_id,
+                "floor": report.location.floor,
+                "candidate_incident_ids": [incident.id for incident in candidates],
+            },
+            requires_review=decision.decision is DuplicateVerdict.NEEDS_REVIEW,
+        )
+    )
+
+
 def find_duplicate_incident(report_id: str) -> dict[str, Any]:
     """Check whether a triaged report describes an already-tracked incident.
 
-    Call this after ``triage_report`` and before opening a new incident.
-    Shortlists recent open incidents in the same building, then compares them
-    against the report to decide whether they describe the same underlying
-    problem -- three reports of one flooded restroom, not three floods.
+    Call this after ``triage_report``. Shortlists recent open incidents in the
+    same building, compares them against the report, and then acts on the
+    answer: a match merges the report into that incident, no match opens a new
+    one, and a genuinely ambiguous case pauses the report for a person instead
+    of guessing.
 
     Args:
         report_id: Id of the triaged report to match.
 
     Returns:
-        A dict with ``report_id``, ``match_found``, ``incident_id`` (``None``
-        when no match), ``confidence``, ``rationale``, and ``candidates``
-        listing the incidents that were considered.
+        A dict whose ``outcome`` is one of ``merged``, ``new_incident``, or
+        ``needs_review``, alongside ``report_id``, ``incident_id`` (``None``
+        for ``needs_review``), ``reasoning``, and ``candidates_considered``;
+        or ``{"error": ...}`` if the report is missing or untriaged.
     """
-    raise NotImplementedError
+    report = get_report(report_id)
+    if report is None:
+        return {"error": f"No report {report_id!r}."}
+    if report.category is None:
+        return {
+            "error": f"Report {report_id!r} has not been triaged yet; call "
+            "triage_report first."
+        }
+
+    candidates = find_candidate_incidents(report)
+    try:
+        decision = compare_incidents(report, candidates)
+    except GeminiError as exc:
+        logger.exception("Deduplication failed for report %s", report_id)
+        return {"error": f"Could not compare report {report_id!r}: {exc}"}
+
+    result: dict[str, Any] = {
+        "report_id": report_id,
+        "reasoning": decision.reasoning,
+        "candidates_considered": len(candidates),
+    }
+
+    if decision.decision is DuplicateVerdict.SAME_INCIDENT:
+        merged = merge_report_into_incident(report_id, decision.matched_incident_id)
+        if "error" in merged:
+            return merged
+        _record(
+            report, decision, f"merged into {decision.matched_incident_id}", candidates
+        )
+        return {
+            **result,
+            "outcome": "merged",
+            "incident_id": decision.matched_incident_id,
+            "report_count": merged["report_count"],
+        }
+
+    if decision.decision is DuplicateVerdict.DIFFERENT_INCIDENT:
+        opened = open_incident(report_id)
+        if "error" in opened:
+            return opened
+        _record(report, decision, f"opened {opened['incident_id']}", candidates)
+        return {
+            **result,
+            "outcome": "new_incident",
+            "incident_id": opened["incident_id"],
+            "title": opened["title"],
+        }
+
+    # needs_review: the report is parked, deliberately unlinked. Leaving
+    # incident_id null is the whole point -- a caller that reads "no incident"
+    # as "not a duplicate" would silently turn a declined judgment into a
+    # split, which is the failure this verdict exists to prevent.
+    update_report(report_id, {"status": ReportStatus.PENDING_REVIEW.value})
+    _record(report, decision, "paused for human review", candidates)
+    return {
+        **result,
+        "outcome": "needs_review",
+        "incident_id": None,
+        "status": ReportStatus.PENDING_REVIEW.value,
+    }

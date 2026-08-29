@@ -87,6 +87,7 @@ class ReportStatus(StrEnum):
     RECEIVED = "received"
     TRIAGED = "triaged"
     LINKED = "linked"
+    PENDING_REVIEW = "pending_review"
     REJECTED = "rejected"
 
 
