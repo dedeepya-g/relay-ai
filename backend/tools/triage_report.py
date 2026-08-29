@@ -25,8 +25,6 @@ from services.gemini_service import generate_structured
 
 logger = logging.getLogger(__name__)
 
-TRIAGE_TEMPERATURE = 0.1
-
 _CATEGORY_GUIDE = {
     IssueCategory.PLUMBING: "water, leaks, drains, fixtures, supply lines",
     IssueCategory.ELECTRICAL: "wiring, outlets, lighting, breakers, power loss",
@@ -75,10 +73,20 @@ report can be an emergency using none of those words, and a report can contain \
 one harmlessly ("the fire extinguisher inspection tag is expired", "there is no \
 smell of gas"). Judge the described situation, not the vocabulary.
 
-missing_fields -- location details that would help dispatch the work but are \
-absent from both the text and any photo. Use only: building, floor, room. Omit \
-a field if the reporter supplied it or the description makes it unambiguous. \
-Do not list a field merely because it would be nice to confirm.
+missing_fields -- location details a dispatcher would need but does not have. \
+Use only: building, floor, room.
+
+Treat a field as present only when the report or photo gives an actual \
+IDENTIFIER for it, never merely a clue about where to look. A room number \
+counts. So does an unambiguously named space, where only one such room exists \
+on that floor ("the third-floor women's restroom"). Directional and proximity \
+wording does not count, however useful it is: "near the elevator", "toward the \
+stairs", "down the hall from the chemistry lab" narrow a search without ever \
+confirming which room, so room remains missing. Apply the same test to building \
+and floor.
+
+When a field is genuinely uncertain, list it. An unnecessary confirmation costs \
+one question; an assumed location costs a crew sent to the wrong room.
 
 confidence_note -- one sentence naming the specific uncertainty in your \
 classification, or stating plainly that the report was unambiguous. Do not \
@@ -205,7 +213,6 @@ def analyze_report(
         TriageResult,
         system_instruction=SYSTEM_INSTRUCTION,
         image=image,
-        temperature=TRIAGE_TEMPERATURE,
     )
     logger.info(
         "Triaged report %s as %s (emergency=%s, %d signals)",

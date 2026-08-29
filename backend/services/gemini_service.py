@@ -29,7 +29,11 @@ logger = logging.getLogger(__name__)
 
 ResponseT = TypeVar("ResponseT", bound=BaseModel)
 
-DEFAULT_TEMPERATURE = 0.2
+#: Zero for every reasoning call. Relay's model calls are classification and
+#: comparison, not generation: the same report must yield the same category on
+#: every run, or a demo cannot be replayed and an audit trail cannot be
+#: defended. Sampling variation buys nothing here.
+DEFAULT_TEMPERATURE = 0.0
 DEFAULT_MAX_RETRIES = 2
 RETRY_BACKOFF_SECONDS = 1.0
 
@@ -75,8 +79,9 @@ def generate_text(
     Args:
         prompt: User-turn prompt.
         system_instruction: Optional system instruction for the model.
-        temperature: Sampling temperature; low by default because Relay's
-            reasoning should be reproducible.
+        temperature: Sampling temperature. Defaults to
+            :data:`DEFAULT_TEMPERATURE`, which is zero; override only for a
+            call that genuinely wants variation.
 
     Returns:
         The model's text response.
