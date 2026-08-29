@@ -3,9 +3,10 @@
 Relay is an AI campus facilities coordination agent for "Relay University," a
 fictional demo campus. It reads a facility report written in plain language,
 classifies it, detects when several reports describe the same underlying
-problem and merges them into a single incident, then assigns priority and
-routes the incident to the maintenance team that owns it. Every decision is
-recorded with its reasoning.
+problem and merges them into a single incident, then assigns priority, routes
+the incident to the maintenance team that owns it, and dispatches a work order.
+An incident left unresolved past its deadline is escalated on a sweep. Every
+decision is recorded with its reasoning.
 
 Built with Gemini 3.5 on Vertex AI for the All Things Agentic Hackathon
 (Taskmaster track).
@@ -14,9 +15,11 @@ Built with Gemini 3.5 on Vertex AI for the All Things Agentic Hackathon
 
 Built and tested end to end: report classification, duplicate detection with a
 human-review path for ambiguous cases, deterministic priority and SLA
-derivation, and routing to the owning team. Triage is multimodal: a photo
-already stored for a report is analyzed alongside its text, though nothing
-stores one yet, so that path is not reachable through the API.
+derivation, routing to the owning team, work order dispatch, and an overdue
+sweep that escalates a breached incident until it reaches the campus policy's
+maximum level. Triage is multimodal: a photo already stored for a report is
+analyzed alongside its text, though nothing stores one yet, so that path is not
+reachable through the API.
 
 The pipeline is reachable over HTTP and through a React operations dashboard:
 report intake with cascading location selection, an incident queue that sorts a
@@ -37,17 +40,16 @@ reproducing the pipeline tests exactly:
   to submit and label reports, read from the seeded configuration.
 - `GET /reviews` lists reports Relay declined to place, each with the reasoning
   that paused it.
+- `POST /admin/check-overdue` runs one pass of the overdue sweep. Relay is meant
+  to run this on a schedule; the endpoint calls the same function a scheduler
+  would, with no shortcut for being triggered by hand.
 
 Not yet implemented:
 
-- Work order dispatch, resolution tracking, and overdue escalation
-  (`create_work_order`, `update_incident_status`,
-  `escalate_overdue_incidents`, `list_overdue_incidents`, and the work-order
-  helpers in `firestore_service`).
-- Photo upload and signed-URL serving (`upload_report_photo`,
-  `generate_signed_url`). A photo sent to `POST /reports` is accepted and
-  discarded: it is neither stored nor analyzed, and the response reports
-  `photo_stored: false` rather than implying otherwise.
+- Photo upload, signed-URL serving, and deletion (`upload_report_photo`,
+  `generate_signed_url`, `delete_photo`). A photo sent to `POST /reports` is
+  accepted and discarded: it is neither stored nor analyzed, and the response
+  reports `photo_stored: false` rather than implying otherwise.
 - Voice intake. `ReportSource.VOICE` is an unused enum value.
 
 ## How Relay reasons
@@ -93,10 +95,11 @@ records its uncertainty, and deduplication can return `needs_review`, which
 pauses a report for a person instead of guessing.
 
 Everything downstream is deterministic rule application over that output.
-Priority and routing read the campus configuration and the accumulated
-evidence, and record their reasoning in the audit trail with `model=None`,
-marking them as rule-based rather than model-derived. Escalation is designed to
-work the same way, from the SLA deadline priority already derives. The same
+Priority, routing, and the overdue sweep read the campus configuration and the
+accumulated evidence, and record their reasoning in the audit trail with
+`model=None`, marking them as rule-based rather than model-derived. Whether a
+deadline passed is arithmetic, and who gets told was written down in advance;
+neither is a judgment. The same
 evidence always produces the same priority and the same team, which is what
 makes an escalation defensible when someone asks why a work order jumped the
 queue.
