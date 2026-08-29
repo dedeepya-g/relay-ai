@@ -68,30 +68,6 @@ def get_client() -> genai.Client:
     )
 
 
-def generate_text(
-    prompt: str,
-    *,
-    system_instruction: str | None = None,
-    temperature: float = DEFAULT_TEMPERATURE,
-) -> str:
-    """Generate a plain-text completion.
-
-    Args:
-        prompt: User-turn prompt.
-        system_instruction: Optional system instruction for the model.
-        temperature: Sampling temperature. Defaults to
-            :data:`DEFAULT_TEMPERATURE`, which is zero; override only for a
-            call that genuinely wants variation.
-
-    Returns:
-        The model's text response.
-
-    Raises:
-        GeminiError: If the call fails or returns no candidates.
-    """
-    raise NotImplementedError
-
-
 def _build_contents(prompt: str, image: tuple[bytes, str] | None) -> types.Content:
     """Assemble the user turn, placing the image before the text.
 
