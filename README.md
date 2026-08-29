@@ -1,116 +1,177 @@
-# Relay-ai
+# Relay
 
-Relay is an AI campus facilities coordination agent for "Relay University," a
-fictional demo campus. It reads a facility report written in plain language,
-classifies it, detects when several reports describe the same underlying
-problem and merges them into a single incident, then assigns priority, routes
-the incident to the maintenance team that owns it, and dispatches a work order.
-An incident left unresolved past its deadline is escalated on a sweep. Every
-decision is recorded with its reasoning.
+Relay is an AI facilities coordination agent for university campuses. It reads
+maintenance reports written in plain language, recognises when several reports
+describe the same underlying fault, and carries each incident through
+prioritisation, routing, and dispatch while recording the reasoning behind
+every decision.
 
-Built with Gemini 3.5 on Vertex AI for the All Things Agentic Hackathon
-(Taskmaster track).
+## The Problem
 
-## Status
+Campus facilities portals collect reports through a flat category dropdown with
+no intelligence behind it, leaving a coordinator to read, classify, and route
+each one by hand. Because reporters describe the same fault differently — a
+leak in a third-floor restroom, water on a bathroom floor upstairs, a wet
+corridor near the elevator — one physical problem routinely becomes several
+tickets, and crews are dispatched more than once for the same job. The reverse
+failure is worse: reports that arrive hours or days apart are never connected,
+so a worsening fault reads as a series of unrelated minor complaints. Facilities
+teams lose most of their time to this handoff gap rather than to the repairs
+themselves.
 
-Built and tested end to end: report classification, duplicate detection with a
-human-review path for ambiguous cases, deterministic priority and SLA
-derivation, routing to the owning team, work order dispatch, and an overdue
-sweep that escalates a breached incident until it reaches the campus policy's
-maximum level. Triage is multimodal: a photo already stored for a report is
-analyzed alongside its text, though nothing stores one yet, so that path is not
-reachable through the API.
+## What Relay Does
 
-The pipeline is reachable over HTTP and through a React operations dashboard:
-report intake with cascading location selection, an incident queue that sorts a
-"needs your attention" band above the rest of the board, incident detail
-carrying the full decision trail, and the resolution action for a report Relay
-paused. These endpoints were exercised with `curl` against a running server,
-reproducing the pipeline tests exactly:
+A submitted report passes through six stages.
 
-- `POST /reports` submits a report and runs it through the full pipeline,
-  returning the outcome, priority, team, and the reasoning behind each.
-- `GET /incidents` lists incidents that are still live work.
-- `GET /incidents/{id}` returns one incident with its linked reports and its
-  decision trail, each entry recording whether an agent or a person decided it
-  and which model, if any, produced the judgment.
-- `POST /reports/{id}/resolve` applies a person's decision to a report Relay
-  paused for review.
-- `GET /campus` serves the buildings, floors, rooms, and teams a client needs
-  to submit and label reports, read from the seeded configuration.
-- `GET /reviews` lists reports Relay declined to place, each with the reasoning
-  that paused it.
-- `POST /admin/check-overdue` runs one pass of the overdue sweep. Relay is meant
-  to run this on a schedule; the endpoint calls the same function a scheduler
-  would, with no shortcut for being triggered by hand.
+1. **Triage.** A language model reads the report and returns its issue
+   category, any phrases indicating urgency, whether it describes danger, and
+   which location details the reporter left out.
+2. **Shortlist.** A database query narrows the comparison to open incidents in
+   the same building, ranked by how plausibly they are the same fault.
+3. **Deduplicate.** A language model decides whether the report describes an
+   incident already being tracked, a separate problem, or something too
+   ambiguous to call. Ambiguous reports are paused for a person rather than
+   guessed at.
+4. **Prioritise.** A rule sets priority and an SLA deadline from how many
+   people reported the problem and how many described danger.
+5. **Route.** A rule assigns the maintenance team that owns the issue category
+   on this campus.
+6. **Dispatch.** A work order is raised with field instructions built from what
+   each reporter actually said.
 
-Not yet implemented:
+A separate sweep escalates any incident that passes its deadline, raising it
+through the campus escalation policy until it is resolved or reaches the
+configured maximum level.
 
-- Photo upload, signed-URL serving, and deletion (`upload_report_photo`,
-  `generate_signed_url`, `delete_photo`). A photo sent to `POST /reports` is
-  accepted and discarded: it is neither stored nor analyzed, and the response
-  reports `photo_stored: false` rather than implying otherwise.
-- Voice intake. `ReportSource.VOICE` is an unused enum value.
+Every stage writes a decision record with its reasoning, whether an agent or a
+person decided it, and which model produced the judgement. Those records are
+what an operator reads when asking why an incident was handled as it was.
 
-## How Relay reasons
+## Architecture
 
-Relay's demo scenario is one water leak in Harlow Science Center reported by
-five different people. All five merge into a single incident, and the
-incident's priority climbs as independent evidence accumulates:
+```mermaid
+flowchart TD
+    R["Report submitted"] --> T["Triage<br/><i>Gemini</i>"]
+    T --> S["Shortlist candidates<br/><i>Firestore query</i>"]
+    S --> D["Deduplicate<br/><i>Gemini</i>"]
 
-| Report | Evidence | Reports describing danger | Priority |
-| --- | --- | --- | --- |
-| 1. Leak in the third-floor restroom | 1 | 0 | `low` |
-| 2. Bathroom floor upstairs covered in water | 2 | 1 | `high` |
-| 3. Water spreading toward the elevator | 3 | 2 | `critical` |
-| 4. Men's restroom sink may have burst | 4 | 2 | `critical` |
-| 5. Water close to an electrical outlet, floor 2 | 5 | 3 | `critical` |
+    D -->|same incident| M["Merge as evidence"]
+    D -->|different| O["Open new incident"]
+    D -->|uncertain| H["Pause for human review"]
 
-Priority is driven by independent accounts of danger, not by report count
-alone. It reaches `critical` at report 3, when a second person independently
-describes a worsening condition, and then holds. Reports 4 and 5 add
-corroboration without inflating anything, because there is nowhere justified
-above `critical` to go. Nothing in the scenario is a scripted trigger: no
-single report unlocks a level.
+    M --> P["Prioritise + SLA<br/><i>rule</i>"]
+    O --> P
+    H -.->|person resolves| M
+    H -.->|person resolves| O
 
-Report 4 is the clearest evidence of that calibration. "The men's restroom sink
-may have burst" is classified as a potential emergency, but it quotes no
-condition -- the reporter is speculating about a cause, not describing
-something getting worse. Raising priority requires both the emergency flag and
-a severity signal, so report 4 increases the evidence count without counting as
-a danger report. Relay declines to escalate on a hunch.
+    P --> RT["Route to team<br/><i>rule</i>"]
+    RT --> W["Dispatch work order<br/><i>rule</i>"]
+    W --> E["Escalate on breach<br/><i>rule</i>"]
+```
 
-Report 5 is the clearest evidence of the deduplication engine. It is on a
-different floor from the leak and names an electrical hazard the original
-report never mentioned, and it still merges into the same incident, because
-water travelling downward is one fault seen from a second vantage point rather
-than a second fault.
+The model is used in exactly two places, and both are genuine judgements about
+ambiguous language: deciding what a report is about, and deciding whether two
+reports describe one fault. Everything after that is deterministic rule
+application over campus configuration, so the same evidence always produces the
+same priority, the same team, and the same escalation — which is what makes an
+escalation defensible when someone asks why a work order jumped the queue.
 
-### Where the model's judgment enters, and where it does not
+**Why each piece.** Gemini handles the natural-language judgements the rest of
+the system deliberately avoids. Firestore holds reports, incidents, work
+orders, and the decision log, and its document model fits records that
+accumulate evidence over time. Cloud Storage holds report photos. The backend
+is FastAPI because the pipeline is a set of typed request-response operations,
+and Pydantic validation at the boundary means a malformed model response fails
+loudly rather than reaching the database. The frontend is a small React
+application because the operations view is read-heavy and needs live SLA
+counters.
 
-Gemini is used in exactly two places: classifying a report, and deciding
-whether two reports describe the same underlying problem. Both are genuine
-judgments about ambiguous natural language, and both can decline -- triage
-records its uncertainty, and deduplication can return `needs_review`, which
-pauses a report for a person instead of guessing.
+## Tech Stack
 
-Everything downstream is deterministic rule application over that output.
-Priority, routing, and the overdue sweep read the campus configuration and the
-accumulated evidence, and record their reasoning in the audit trail with
-`model=None`, marking them as rule-based rather than model-derived. Whether a
-deadline passed is arithmetic, and who gets told was written down in advance;
-neither is a judgment. The same
-evidence always produces the same priority and the same team, which is what
-makes an escalation defensible when someone asks why a work order jumped the
-queue.
+- **Gemini 3.5 Flash** (via Vertex AI) — report classification and duplicate
+  detection
+- **Google ADK** — *dependency present; orchestration layer not yet built*
+- **Firestore** — reports, incidents, work orders, decision log
+- **Cloud Storage** — report photos
+- **Cloud Run** — *target deployment; not yet deployed*
+- **FastAPI / Python 3.12+** — backend
+- **React / TypeScript / Vite** — operations dashboard
 
-## Vertex AI configuration note
+## Setup
 
-Gemini 3.5 Flash is reached through Vertex AI with `location="global"`. It is not
-served from individual regions: the same model id returns HTTP 404 against
-`us-central1`, which reads like a missing-access error but is purely a region
-availability issue. `backend/scripts/dev/check_model_access.py` probes model ids
-against a given location and reports the distinction.
+### Prerequisites
 
-The Gemini endpoint location is independent of where the other services live —
-Firestore and Cloud Storage remain in `us-east1`.
+- Python 3.12 or later, Node.js 20 or later
+- A Google Cloud project with Firestore in Native mode, a Cloud Storage bucket,
+  and the Vertex AI API enabled
+- The `gcloud` CLI, authenticated
+
+### Environment
+
+Copy `backend/.env.example` to `backend/.env` and set:
+
+| Variable | Purpose |
+| --- | --- |
+| `GOOGLE_CLOUD_PROJECT` | Project owning Firestore, Storage, and Vertex AI |
+| `RELAY_STORAGE_BUCKET` | Bucket for report photos |
+| `RELAY_GEMINI_MODEL` | Model id; defaults to `gemini-3.5-flash` |
+| `RELAY_GEMINI_LOCATION` | Vertex AI location; must be `global` for Gemini 3.x |
+| `RELAY_CAMPUS_ID` | Campus configuration document to load |
+| `RELAY_ALLOWED_ORIGINS` | Browser origins permitted by CORS |
+
+Relay authenticates through Application Default Credentials, so no API key is
+required. The credentials need the Vertex AI User, Datastore User, and Storage
+Object Admin roles.
+
+Gemini 3.x models are served only from the Vertex AI `global` endpoint.
+Requesting one from a single region returns HTTP 404, which resembles an access
+error but is a region availability issue.
+
+### Run locally
+
+```bash
+# Backend
+cd backend
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt
+gcloud auth application-default login
+.venv/bin/python -m scripts.seed_campus_config     # one-time campus setup
+.venv/bin/uvicorn main:app --reload --port 8080
+```
+
+```bash
+# Frontend
+cd frontend
+npm install
+cp .env.example .env.local                          # defaults to :8080
+npm run dev
+```
+
+To confirm all three cloud dependencies are reachable before starting:
+
+```bash
+cd backend && .venv/bin/python -m scripts.dev.verify_setup
+```
+
+## API
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/reports` | Submit a report and run it through the pipeline |
+| `GET` | `/incidents` | List incidents that are still live work |
+| `GET` | `/incidents/{id}` | One incident with its reports and decision trail |
+| `POST` | `/reports/{id}/resolve` | Resolve a report awaiting human review |
+| `GET` | `/campus` | Buildings, floors, rooms, and maintenance teams |
+| `GET` | `/reviews` | Reports paused for human review |
+| `POST` | `/admin/check-overdue` | Run one pass of the escalation sweep |
+| `GET` | `/healthz` | Liveness probe |
+
+Interactive documentation is served at `/docs` while the backend is running.
+
+## Team
+
+Dedeepya Guntaka
+
+## Built For
+
+All Things Agentic Hackathon — Taskmaster track
