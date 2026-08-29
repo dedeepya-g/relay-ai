@@ -15,6 +15,30 @@ from models.common import (
 )
 
 
+def ticket_number(work_order_id: str) -> str:
+    """Derive the short number a technician reads off a radio.
+
+    Taken from the document id rather than a counter: a sequential number would
+    need a transaction to stay unique, and nothing here benefits from work
+    orders being consecutively numbered.
+    """
+    return f"WO-{work_order_id.rsplit('_', 1)[-1][:6].upper()}"
+
+
+class StatusChange(RelayModel):
+    """One transition in a work order's life.
+
+    Kept as history rather than only a current status, because "when did the
+    team actually get this?" is the question asked after a deadline is missed.
+    """
+
+    status: WorkOrderStatus
+    at: datetime = Field(default_factory=utc_now)
+    note: str | None = Field(
+        default=None, max_length=500, description="Why the status changed."
+    )
+
+
 class WorkOrder(RelayModel):
     """An actionable assignment issued to one team for one incident.
 
@@ -24,6 +48,9 @@ class WorkOrder(RelayModel):
     """
 
     id: str = Field(default_factory=lambda: new_id("wo"))
+    ticket: str = Field(
+        description="Short human-facing dispatch number, e.g. 'WO-4BC910'."
+    )
     campus_id: str = Field(description="Campus this work order belongs to.")
     incident_id: str = Field(description="Incident this work order resolves.")
 
@@ -42,6 +69,10 @@ class WorkOrder(RelayModel):
 
     # --- Progress -----------------------------------------------------------
     status: WorkOrderStatus = Field(default=WorkOrderStatus.PENDING)
+    status_history: list[StatusChange] = Field(
+        default_factory=list,
+        description="Every status this work order has held, oldest first.",
+    )
     due_at: datetime | None = Field(
         default=None, description="Deadline inherited from the incident SLA."
     )

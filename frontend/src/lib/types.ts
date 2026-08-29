@@ -6,6 +6,7 @@ export type IncidentStatus =
   | 'assigned'
   | 'in_progress'
   | 'on_hold'
+  | 'escalated'
   | 'resolved'
   | 'closed'
 export type ReportStatus =

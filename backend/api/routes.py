@@ -20,6 +20,7 @@ from api.schemas import (
     IncidentList,
     IncidentSummary,
     LinkedReport,
+    OverdueSweepResponse,
     PendingReview,
     PendingReviewList,
     ReportIntakeResponse,
@@ -43,6 +44,8 @@ from services.firestore_service import (
     list_reports_for_incident,
 )
 from tools.assign_priority import assign_priority
+from tools.create_work_order import create_work_order
+from tools.escalate_overdue_incidents import escalate_overdue_incidents
 from tools.find_duplicate_incident import find_duplicate_incident
 from tools.resolve_review import resolve_review
 from tools.route_to_team import route_to_team
@@ -81,6 +84,7 @@ def _summarize(incident: Incident, team_names: dict[str, str]) -> IncidentSummar
         assigned_team_id=incident.assigned_team_id,
         assigned_team_name=team_names.get(incident.assigned_team_id or ""),
         report_count=len(incident.report_ids),
+        escalation_level=incident.escalation_level,
         sla_due_at=incident.sla_due_at,
         created_at=incident.created_at,
         updated_at=incident.updated_at,
@@ -171,11 +175,17 @@ async def submit_report(
             status_code=status.HTTP_502_BAD_GATEWAY, detail=routing["error"]
         )
 
+    # Dispatch last, once the incident has both a priority and a team. This is
+    # idempotent, so a report merging into an incident that is already being
+    # worked returns the existing ticket instead of sending a second crew.
+    dispatch = create_work_order(incident_id)
+
     response.priority = priority["priority"]
     response.sla_due_at = priority["sla_due_at"]
     response.evidence_count = priority["evidence_count"]
     response.team_assigned = routing["team_id"]
     response.team_name = routing["team_name"]
+    response.work_order_ticket = dispatch.get("ticket")
     response.reasoning["prioritization"] = priority["rationale"]
     response.reasoning["routing"] = routing["rationale"]
     return response
@@ -394,3 +404,21 @@ async def list_pending_reviews() -> PendingReviewList:
             )
         )
     return PendingReviewList(reports=entries, count=len(entries))
+
+
+@router.post(
+    "/admin/check-overdue", response_model=OverdueSweepResponse, tags=["admin"]
+)
+async def check_overdue() -> OverdueSweepResponse:
+    """Run the overdue sweep once and report what it escalated.
+
+    Relay is meant to run this on a schedule. Exposing it as an endpoint keeps
+    the demo honest: the sweep that runs here is the same function a scheduler
+    would call, with no shortcut for being triggered by hand.
+    """
+    result = escalate_overdue_incidents(get_settings().campus_id)
+    if "error" in result:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=result["error"]
+        )
+    return OverdueSweepResponse(**result)

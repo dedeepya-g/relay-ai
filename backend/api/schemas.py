@@ -63,6 +63,11 @@ class ReportIntakeResponse(RelaySchema):
         description="Explanation from each stage that made a judgment, keyed by "
         "stage: triage, deduplication, prioritization, routing.",
     )
+    work_order_ticket: str | None = Field(
+        default=None,
+        description="Dispatch ticket raised for the owning team; null while a "
+        "report awaits review and has no incident to dispatch.",
+    )
     photo_received: bool = Field(
         default=False,
         description="Whether a photo was uploaded with this report.",
@@ -93,6 +98,11 @@ class IncidentSummary(RelaySchema):
         "configuration so callers never have to map team ids themselves.",
     )
     report_count: int
+    escalation_level: int = Field(
+        default=0,
+        description="How many times the overdue sweep has raised this "
+        "incident; 0 means never escalated.",
+    )
     sla_due_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
@@ -242,3 +252,31 @@ class PendingReviewList(RelaySchema):
 
     reports: list[PendingReview]
     count: int
+
+
+# --- Overdue sweep ----------------------------------------------------------
+
+
+class EscalationEntry(RelaySchema):
+    """One incident raised by the overdue sweep."""
+
+    incident_id: str
+    title: str
+    escalation_level: int
+    minutes_past_deadline: int
+    supporting_team_id: str | None = None
+    supporting_ticket: str | None = None
+    work_order_tickets: list[str] = Field(default_factory=list)
+
+
+class OverdueSweepResponse(RelaySchema):
+    """Outcome of one pass of the overdue sweep."""
+
+    campus_id: str
+    checked_count: int = Field(description="Incidents found past their deadline.")
+    escalated_count: int = Field(
+        description="Of those, how many the escalation policy actually raised. "
+        "The two differ when an incident is inside its grace period, inside "
+        "the repeat interval, or already at the policy's maximum level."
+    )
+    escalations: list[EscalationEntry] = Field(default_factory=list)

@@ -98,6 +98,7 @@ class IncidentStatus(StrEnum):
     ASSIGNED = "assigned"
     IN_PROGRESS = "in_progress"
     ON_HOLD = "on_hold"
+    ESCALATED = "escalated"
     RESOLVED = "resolved"
     CLOSED = "closed"
 

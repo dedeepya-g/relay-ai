@@ -18,8 +18,12 @@ derivation, and routing to the owning team. Triage is multimodal: a photo
 already stored for a report is analyzed alongside its text, though nothing
 stores one yet, so that path is not reachable through the API.
 
-The pipeline is reachable over HTTP. These four endpoints were exercised with
-`curl` against a running server, reproducing the pipeline tests exactly:
+The pipeline is reachable over HTTP and through a React operations dashboard:
+report intake with cascading location selection, an incident queue that sorts a
+"needs your attention" band above the rest of the board, incident detail
+carrying the full decision trail, and the resolution action for a report Relay
+paused. These endpoints were exercised with `curl` against a running server,
+reproducing the pipeline tests exactly:
 
 - `POST /reports` submits a report and runs it through the full pipeline,
   returning the outcome, priority, team, and the reasoning behind each.
@@ -29,6 +33,10 @@ The pipeline is reachable over HTTP. These four endpoints were exercised with
   and which model, if any, produced the judgment.
 - `POST /reports/{id}/resolve` applies a person's decision to a report Relay
   paused for review.
+- `GET /campus` serves the buildings, floors, rooms, and teams a client needs
+  to submit and label reports, read from the seeded configuration.
+- `GET /reviews` lists reports Relay declined to place, each with the reasoning
+  that paused it.
 
 Not yet implemented:
 
@@ -40,8 +48,6 @@ Not yet implemented:
   `generate_signed_url`). A photo sent to `POST /reports` is accepted and
   discarded: it is neither stored nor analyzed, and the response reports
   `photo_stored: false` rather than implying otherwise.
-- The React frontend, which checks that the backend is reachable and nothing
-  more. There is no intake form or dashboard; the API is driven by `curl`.
 - Voice intake. `ReportSource.VOICE` is an unused enum value.
 
 ## How Relay reasons

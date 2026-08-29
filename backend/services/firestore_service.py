@@ -38,6 +38,7 @@ ACTIVE_INCIDENT_STATUSES = frozenset(
         IncidentStatus.ASSIGNED,
         IncidentStatus.IN_PROGRESS,
         IncidentStatus.ON_HOLD,
+        IncidentStatus.ESCALATED,
     }
 )
 
@@ -261,8 +262,33 @@ def list_overdue_incidents(campus_id: str, as_of: datetime) -> list[Incident]:
     Args:
         campus_id: Campus to scope the query to.
         as_of: Time to evaluate the deadline against, normally now.
+
+    Returns:
+        Live incidents whose deadline has passed, longest overdue first.
+        Already-escalated incidents are included: an incident that stays
+        unresolved should keep climbing, and whether it may is the escalation
+        policy's decision through its repeat interval and maximum level, not
+        this query's. Excluding them here would silently cap every incident at
+        level one and make that policy unreachable.
     """
-    raise NotImplementedError
+    query = (
+        _collection(INCIDENTS_COLLECTION)
+        .where(filter=FieldFilter("campus_id", "==", campus_id))
+        .limit(CANDIDATE_FETCH_LIMIT)
+    )
+    incidents = [
+        Incident.from_firestore(snapshot.id, snapshot.to_dict())
+        for snapshot in query.stream()
+    ]
+    overdue = [
+        incident
+        for incident in incidents
+        if incident.status in ACTIVE_INCIDENT_STATUSES
+        and incident.sla_due_at is not None
+        and incident.sla_due_at < as_of
+    ]
+    overdue.sort(key=lambda incident: incident.sla_due_at)
+    return overdue
 
 
 # --- Work orders ------------------------------------------------------------
@@ -270,12 +296,24 @@ def list_overdue_incidents(campus_id: str, as_of: datetime) -> list[Incident]:
 
 def create_work_order(work_order: WorkOrder) -> WorkOrder:
     """Persist a work order dispatched to a maintenance team."""
-    raise NotImplementedError
+    _collection(WORK_ORDERS_COLLECTION).document(work_order.id).set(
+        work_order.to_firestore()
+    )
+    logger.info(
+        "Dispatched work order %s (%s) to %s",
+        work_order.ticket,
+        work_order.id,
+        work_order.team_id,
+    )
+    return work_order
 
 
 def get_work_order(work_order_id: str) -> WorkOrder | None:
     """Fetch one work order by id, or ``None`` if it does not exist."""
-    raise NotImplementedError
+    snapshot = _collection(WORK_ORDERS_COLLECTION).document(work_order_id).get()
+    if not snapshot.exists:
+        return None
+    return WorkOrder.from_firestore(snapshot.id, snapshot.to_dict())
 
 
 def update_work_order(work_order_id: str, fields: dict[str, object]) -> WorkOrder:
@@ -284,12 +322,25 @@ def update_work_order(work_order_id: str, fields: dict[str, object]) -> WorkOrde
     Raises:
         KeyError: If the work order does not exist.
     """
-    raise NotImplementedError
+    document = _collection(WORK_ORDERS_COLLECTION).document(work_order_id)
+    if not document.get().exists:
+        raise KeyError(f"No work order {work_order_id!r}.")
+    document.update({**fields, "updated_at": utc_now()})
+    snapshot = document.get()
+    return WorkOrder.from_firestore(snapshot.id, snapshot.to_dict())
 
 
 def list_work_orders_for_incident(incident_id: str) -> list[WorkOrder]:
     """Return every work order raised for an incident, oldest first."""
-    raise NotImplementedError
+    query = _collection(WORK_ORDERS_COLLECTION).where(
+        filter=FieldFilter("incident_id", "==", incident_id)
+    )
+    work_orders = [
+        WorkOrder.from_firestore(snapshot.id, snapshot.to_dict())
+        for snapshot in query.stream()
+    ]
+    work_orders.sort(key=lambda work_order: work_order.created_at)
+    return work_orders
 
 
 # --- Decisions --------------------------------------------------------------
