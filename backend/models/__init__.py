@@ -24,6 +24,7 @@ from models.common import (
 from models.decision import Decision
 from models.incident import Incident
 from models.report import Report
+from models.triage import MissingField, TriageResult
 from models.work_order import WorkOrder
 
 __all__ = [
@@ -37,6 +38,7 @@ __all__ = [
     "IssueCategory",
     "Location",
     "MaintenanceTeam",
+    "MissingField",
     "Priority",
     "RelayModel",
     "Report",
@@ -44,6 +46,7 @@ __all__ = [
     "ReportStatus",
     "Room",
     "RoomType",
+    "TriageResult",
     "WorkOrder",
     "WorkOrderStatus",
     "new_id",

@@ -14,11 +14,14 @@ which needs the Vertex AI User role.
 from __future__ import annotations
 
 import logging
+import time
 from functools import lru_cache
 from typing import Any, TypeVar
 
 from google import genai
-from pydantic import BaseModel
+from google.genai import types
+from google.genai.errors import APIError
+from pydantic import BaseModel, ValidationError
 
 from config import get_settings
 
@@ -28,6 +31,12 @@ ResponseT = TypeVar("ResponseT", bound=BaseModel)
 
 DEFAULT_TEMPERATURE = 0.2
 DEFAULT_MAX_RETRIES = 2
+RETRY_BACKOFF_SECONDS = 1.0
+
+#: Status codes worth retrying. Everything else -- a bad request, an unknown
+#: model, a permission failure -- fails the same way on every attempt, so
+#: retrying only delays the error the caller needs to see.
+RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
 
 class GeminiError(RuntimeError):
@@ -78,6 +87,43 @@ def generate_text(
     raise NotImplementedError
 
 
+def _build_contents(prompt: str, image: tuple[bytes, str] | None) -> types.Content:
+    """Assemble the user turn, placing the image before the text.
+
+    Gemini attends to an image more reliably when it precedes the instructions
+    that refer to it.
+    """
+    parts: list[types.Part] = []
+    if image is not None:
+        data, content_type = image
+        parts.append(types.Part.from_bytes(data=data, mime_type=content_type))
+    parts.append(types.Part.from_text(text=prompt))
+    return types.Content(role="user", parts=parts)
+
+
+def _parse(response: types.GenerateContentResponse, response_model: type[ResponseT]) -> ResponseT:
+    """Extract a validated model from a response.
+
+    Prefers the SDK's own parsing and falls back to validating the raw JSON
+    text, which covers responses the SDK declines to parse.
+
+    Raises:
+        ValidationError: If the payload does not satisfy ``response_model``.
+        GeminiError: If the response carries no usable payload at all.
+    """
+    parsed = getattr(response, "parsed", None)
+    if isinstance(parsed, response_model):
+        return parsed
+
+    text = (response.text or "").strip()
+    if not text:
+        raise GeminiError(
+            "Gemini returned an empty response; it may have been blocked by a "
+            "safety filter or stopped early."
+        )
+    return response_model.model_validate_json(text)
+
+
 def generate_structured(
     prompt: str,
     response_model: type[ResponseT],
@@ -104,9 +150,56 @@ def generate_structured(
 
     Raises:
         GeminiError: If the call fails, or the response cannot be parsed into
-            ``response_model`` after :data:`DEFAULT_MAX_RETRIES` attempts.
+            ``response_model`` after :data:`DEFAULT_MAX_RETRIES` retries. Raw
+            SDK exceptions never escape this function.
     """
-    raise NotImplementedError
+    settings = get_settings()
+    contents = _build_contents(prompt, image)
+    config = types.GenerateContentConfig(
+        system_instruction=system_instruction,
+        temperature=temperature,
+        response_mime_type="application/json",
+        response_schema=response_model,
+    )
+
+    last_error: Exception | None = None
+    for attempt in range(DEFAULT_MAX_RETRIES + 1):
+        try:
+            response = get_client().models.generate_content(
+                model=settings.gemini_model, contents=contents, config=config
+            )
+            return _parse(response, response_model)
+        except APIError as exc:
+            if exc.code not in RETRYABLE_STATUS_CODES:
+                raise GeminiError(
+                    f"Gemini call failed with HTTP {exc.code} and will not be "
+                    f"retried: {exc.message}"
+                ) from exc
+            last_error = exc
+            logger.warning(
+                "Gemini call failed with retryable HTTP %s (attempt %d/%d): %s",
+                exc.code,
+                attempt + 1,
+                DEFAULT_MAX_RETRIES + 1,
+                exc.message,
+            )
+        except (ValidationError, GeminiError) as exc:
+            last_error = exc
+            logger.warning(
+                "Gemini returned an unusable %s payload (attempt %d/%d): %s",
+                response_model.__name__,
+                attempt + 1,
+                DEFAULT_MAX_RETRIES + 1,
+                exc,
+            )
+
+        if attempt < DEFAULT_MAX_RETRIES:
+            time.sleep(RETRY_BACKOFF_SECONDS * (2**attempt))
+
+    raise GeminiError(
+        f"Gemini did not return a usable {response_model.__name__} after "
+        f"{DEFAULT_MAX_RETRIES + 1} attempts: {last_error}"
+    ) from last_error
 
 
 def embed_text(texts: list[str]) -> list[list[float]]:
