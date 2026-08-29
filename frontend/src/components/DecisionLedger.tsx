@@ -20,6 +20,20 @@ const TYPE_LABELS: Record<string, string> = {
   routing: 'Routing',
   escalation: 'Escalation',
   resolution: 'Resolution',
+  coordination: 'Coordination',
+}
+
+/**
+ * Relay mixes three kinds of execution deliberately, and a reader needs to
+ * tell them apart: a model judging something ambiguous, a rule applying campus
+ * policy, and the coordinating agent choosing a follow-up. A person is the
+ * fourth, and keeps its own lane.
+ */
+const EXECUTOR_LABELS: Record<DecisionEntry['decided_by'], string> = {
+  model: 'Model',
+  rule: 'Rule',
+  agent: 'Agent',
+  human: 'Person',
 }
 
 interface Group {
@@ -108,21 +122,18 @@ export function DecisionLedger({ reports, decisions, buildingName }: LedgerProps
           {item.entries.map((entry) => (
             <article
               key={entry.decision_id}
-              className={`entry${entry.decided_by === 'human' ? ' entry--human' : ''}`}
+              className={`entry entry--${entry.decided_by}`}
             >
               <div className="entry__head">
                 <span className="entry__type">
                   {TYPE_LABELS[entry.decision_type] ?? entry.decision_type}
                 </span>
-                <span className="entry__by">
-                  {entry.decided_by === 'human' ? 'Person' : 'Relay'}
+                <span className={`entry__by entry__by--${entry.decided_by}`}>
+                  {EXECUTOR_LABELS[entry.decided_by] ?? entry.decided_by}
                 </span>
-                {/* A null model means "no model was involved". For an agent that
-                    reads as a rule; for a person it would misdescribe the
-                    decision, and the PERSON chip already says who decided. */}
-                {entry.decided_by === 'agent' && (
-                  <span className="entry__attr">{entry.model ?? 'rule'}</span>
-                )}
+                {/* The executor chip already says what decided this, so the
+                    model id is only worth showing when there is one. */}
+                {entry.model && <span className="entry__attr">{entry.model}</span>}
               </div>
               <p className="entry__why">{entry.rationale}</p>
             </article>

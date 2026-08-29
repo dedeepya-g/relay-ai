@@ -11,7 +11,7 @@ import logging
 from typing import Any
 
 from models.campus_config import CampusConfig, MaintenanceTeam
-from models.common import DecisionType, IssueCategory
+from models.common import DecisionActor, DecisionType, IssueCategory
 from models.decision import Decision
 from services.firestore_service import (
     get_campus_config,
@@ -101,6 +101,7 @@ def route_to_team(incident_id: str) -> dict[str, Any]:
         Decision(
             campus_id=incident.campus_id,
             decision_type=DecisionType.ROUTING,
+            decided_by=DecisionActor.RULE,
             subject_type="incidents",
             subject_id=incident_id,
             outcome=f"routed to {team.id}",

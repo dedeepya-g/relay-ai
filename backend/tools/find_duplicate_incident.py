@@ -15,7 +15,7 @@ from datetime import timedelta
 from typing import Any
 
 from config import get_settings
-from models.common import DecisionType, ReportStatus, utc_now
+from models.common import DecisionActor, DecisionType, ReportStatus, utc_now
 from models.decision import Decision
 from models.duplicate import DuplicateDecision, DuplicateVerdict
 from models.incident import Incident
@@ -327,6 +327,7 @@ def _record(
         Decision(
             campus_id=report.campus_id,
             decision_type=DecisionType.DEDUPLICATION,
+            decided_by=DecisionActor.MODEL,
             subject_type="reports",
             subject_id=report.id,
             outcome=outcome,

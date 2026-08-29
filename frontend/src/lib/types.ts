@@ -86,7 +86,8 @@ export interface LinkedReport {
 export interface DecisionEntry {
   decision_id: string
   decision_type: string
-  decided_by: 'agent' | 'human'
+  /** What executed the decision, not merely whether a person was involved. */
+  decided_by: 'model' | 'rule' | 'agent' | 'human'
   subject_id: string
   outcome: string
   rationale: string

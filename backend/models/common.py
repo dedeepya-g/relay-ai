@@ -118,6 +118,7 @@ class DecisionType(StrEnum):
 
     TRIAGE = "triage"
     DEDUPLICATION = "deduplication"
+    COORDINATION = "coordination"
     PRIORITIZATION = "prioritization"
     ROUTING = "routing"
     ESCALATION = "escalation"
@@ -125,13 +126,28 @@ class DecisionType(StrEnum):
 
 
 class DecisionActor(StrEnum):
-    """Who made a recorded decision.
+    """What executed a recorded decision.
 
-    Kept explicit rather than inferred from whether a model id is present, so
-    the audit trail can be queried directly for what Relay decided on its own
-    versus what a person confirmed.
+    Relay mixes three kinds of execution on purpose, and collapsing them would
+    hide the architecture rather than describe it. A category judgment and a
+    team lookup are not the same kind of act, and an auditor asking why a work
+    order was routed somewhere deserves to see which one answered.
+
+    Attributes:
+        MODEL: A language model judged something ambiguous -- what a report is
+            about, or whether two reports describe one fault.
+        RULE: Deterministic policy applied to recorded evidence. Priority,
+            routing, escalation, and status transitions. The same inputs always
+            produce the same output.
+        AGENT: The ADK coordinator chose a follow-up action after the pipeline
+            finished. It selects among actions; it does not make the judgments
+            above or apply the rules below.
+        HUMAN: A person decided, usually resolving a report Relay declined to
+            place.
     """
 
+    MODEL = "model"
+    RULE = "rule"
     AGENT = "agent"
     HUMAN = "human"
 

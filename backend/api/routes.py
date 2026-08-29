@@ -29,6 +29,7 @@ from api.schemas import (
     RoomOption,
     TeamOption,
 )
+from agents.coordinator import coordinate
 from config import get_settings
 from models.common import DecisionType, Location, ReportStatus
 from models.incident import Incident
@@ -162,6 +163,22 @@ async def submit_report(
 
     incident_id = dedup.get("incident_id")
     if incident_id is None:
+        # Deduplication declined to place this report. The coordinator decides
+        # what to do about that -- ask the reporter something, place it, or
+        # agree a person is needed -- rather than the report simply waiting.
+        followup = await coordinate(
+            report_id=report.id,
+            outcome=dedup["outcome"],
+            dedup_reasoning=dedup["reasoning"],
+        )
+        response.coordinator_actions = followup["actions"]
+        response.coordinator_reasoning = followup["reasoning"] or None
+        placed = get_report(report.id)
+        if placed is not None:
+            response.report_status = placed.status
+            response.incident_id = placed.incident_id
+            if placed.incident_id:
+                response.outcome = "merged"
         return response
 
     priority = assign_priority(incident_id)
@@ -188,6 +205,21 @@ async def submit_report(
     response.work_order_ticket = dispatch.get("ticket")
     response.reasoning["prioritization"] = priority["rationale"]
     response.reasoning["routing"] = routing["rationale"]
+
+    # Everything above is deterministic and already recorded. The coordinator
+    # runs last, reads the resulting state, and decides what follow-up it
+    # warrants. It cannot change any of the decisions it is reacting to.
+    followup = await coordinate(
+        report_id=report.id,
+        outcome=dedup["outcome"],
+        incident_id=incident_id,
+        previous_priority=priority["previous_priority"],
+        new_priority=priority["priority"],
+        dedup_reasoning=dedup["reasoning"],
+        evidence_count=priority["evidence_count"],
+    )
+    response.coordinator_actions = followup["actions"]
+    response.coordinator_reasoning = followup["reasoning"] or None
     return response
 
 
