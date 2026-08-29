@@ -63,8 +63,22 @@ reports about one physical problem across different teams.
 
 severity_signals -- short phrases taken from the report that indicate urgency, \
 spread, or danger. Quote the reporter's own wording rather than paraphrasing, \
-so the record stays traceable to what was actually said. Use an empty list when \
-the report describes a static, contained problem.
+so the record stays traceable to what was actually said.
+
+Quote the MINIMAL meaningful phrase. Drop leading words that carry no urgency \
+information: "water spreading", not "There is water spreading"; "getting close \
+to an electrical outlet", not "Water is getting close to an electrical outlet".
+
+A signal is an escalating or hazardous CONDITION, not the existence of a \
+problem. Spreading, proximity to electrical or fire hazards, blocked exits, \
+structural risk, and risk to people are signals. The fault itself never is. A \
+report describing a contained, non-spreading, non-hazardous problem returns an \
+empty list.
+
+Worked example: "Water is leaking inside the third-floor restroom" describes a \
+contained leak with no spread, no hazard proximity, and no urgency language, so \
+severity_signals is []. The word "leaking" names the fault; it is not a signal \
+on its own.
 
 is_potential_emergency -- true only when the report describes genuine danger to \
 people or damage actively getting worse. You will be given the campus emergency \
