@@ -123,6 +123,18 @@ class DecisionType(StrEnum):
     RESOLUTION = "resolution"
 
 
+class DecisionActor(StrEnum):
+    """Who made a recorded decision.
+
+    Kept explicit rather than inferred from whether a model id is present, so
+    the audit trail can be queried directly for what Relay decided on its own
+    versus what a person confirmed.
+    """
+
+    AGENT = "agent"
+    HUMAN = "human"
+
+
 class RelayModel(BaseModel):
     """Base model for every Relay document.
 

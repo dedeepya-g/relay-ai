@@ -12,6 +12,7 @@ from tools.escalate_overdue_incidents import escalate_overdue_incidents
 from tools.find_duplicate_incident import find_duplicate_incident
 from tools.merge_report_into_incident import merge_report_into_incident
 from tools.open_incident import open_incident
+from tools.resolve_review import resolve_review
 from tools.route_to_team import route_to_team
 from tools.triage_report import triage_report
 from tools.update_incident_status import update_incident_status
@@ -23,6 +24,7 @@ __all__ = [
     "find_duplicate_incident",
     "merge_report_into_incident",
     "open_incident",
+    "resolve_review",
     "route_to_team",
     "triage_report",
     "update_incident_status",

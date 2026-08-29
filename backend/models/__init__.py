@@ -8,6 +8,7 @@ from models.campus_config import (
     Room,
 )
 from models.common import (
+    DecisionActor,
     DecisionType,
     IncidentStatus,
     IssueCategory,
@@ -32,6 +33,7 @@ __all__ = [
     "Building",
     "CampusConfig",
     "Decision",
+    "DecisionActor",
     "DecisionType",
     "DuplicateDecision",
     "DuplicateVerdict",

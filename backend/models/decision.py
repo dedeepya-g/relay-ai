@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import Field
 
-from models.common import DecisionType, RelayModel, new_id, utc_now
+from models.common import DecisionActor, DecisionType, RelayModel, new_id, utc_now
 
 
 class Decision(RelayModel):
@@ -24,6 +24,10 @@ class Decision(RelayModel):
 
     # --- What was decided ---------------------------------------------------
     decision_type: DecisionType
+    decided_by: DecisionActor = Field(
+        default=DecisionActor.AGENT,
+        description="Whether Relay decided this autonomously or a person did.",
+    )
     subject_type: str = Field(
         description="Collection the decision applies to, e.g. 'incidents'."
     )
