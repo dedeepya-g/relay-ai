@@ -27,11 +27,13 @@ from api.schemas import (
     ResolveReviewRequest,
     ResolveReviewResponse,
     RoomOption,
+    StatusUpdateRequest,
+    StatusUpdateResponse,
     TeamOption,
 )
 from agents.coordinator import coordinate
 from config import get_settings
-from models.common import DecisionType, Location, ReportStatus
+from models.common import DecisionType, IncidentStatus, Location, ReportStatus
 from models.incident import Incident
 from models.report import Report
 from services.firestore_service import (
@@ -51,6 +53,7 @@ from tools.find_duplicate_incident import find_duplicate_incident
 from tools.resolve_review import resolve_review
 from tools.route_to_team import route_to_team
 from tools.triage_report import triage_report
+from tools.update_incident_status import ALLOWED_TRANSITIONS, update_incident_status
 
 logger = logging.getLogger(__name__)
 
@@ -294,6 +297,74 @@ async def get_incident_detail(incident_id: str) -> IncidentDetail:
             )
             for decision in decisions
         ],
+    )
+
+
+@router.post(
+    "/incidents/{incident_id}/status",
+    response_model=StatusUpdateResponse,
+    tags=["incidents"],
+)
+async def update_status(
+    incident_id: str, payload: StatusUpdateRequest
+) -> StatusUpdateResponse:
+    """Move an incident to a new lifecycle status.
+
+    The tool owns the rules -- which transitions are legal, and that resolving
+    requires notes -- and remains the only thing that writes the status. The
+    checks here exist solely to choose a status code: an unknown status is a
+    malformed request, an illegal transition conflicts with the incident's
+    current state, and the two deserve different codes. Legality is read from
+    the tool's own ``ALLOWED_TRANSITIONS`` rather than restated, so the table
+    stays the single source of truth.
+    """
+    incident = get_incident(incident_id)
+    if incident is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No incident {incident_id!r}.",
+        )
+
+    try:
+        target = IncidentStatus(payload.new_status)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown status {payload.new_status!r}; expected one of "
+            f"{sorted(item.value for item in IncidentStatus)}.",
+        ) from None
+
+    allowed = ALLOWED_TRANSITIONS.get(incident.status, frozenset())
+    if target is not incident.status and target not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot move incident {incident_id!r} from "
+            f"{incident.status.value!r} to {target.value!r}. Allowed from "
+            f"{incident.status.value!r}: "
+            f"{sorted(item.value for item in allowed) or 'nothing'}.",
+        )
+
+    result = update_incident_status(
+        incident_id, status=target.value, notes=payload.notes
+    )
+    if "error" in result:
+        # Everything reachable here is a well-formed request the tool still
+        # refuses -- resolving without notes being the live case.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"]
+        )
+
+    updated = get_incident(incident_id)
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No incident {incident_id!r}.",
+        )
+
+    return StatusUpdateResponse(
+        incident=_summarize(updated, _team_names()),
+        previous_status=result["previous_status"],
+        changed=result["changed"],
     )
 
 

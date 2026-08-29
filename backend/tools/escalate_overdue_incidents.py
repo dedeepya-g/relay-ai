@@ -36,6 +36,7 @@ from services.firestore_service import (
     update_incident,
     update_work_order,
 )
+from tools.update_incident_status import ALLOWED_TRANSITIONS
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +151,23 @@ def escalate_overdue_incidents(campus_id: str) -> dict[str, Any]:
         if incident.last_escalated_at is not None and now - incident.last_escalated_at < timedelta(
             minutes=policy.repeat_interval_minutes
         ):
+            continue
+
+        # The sweep writes status itself, in one update alongside the level and
+        # timestamp, rather than calling update_incident_status: that tool
+        # records a RESOLUTION decision and would split this into two writes,
+        # and escalation records its own decision below. Consulting the shared
+        # table keeps the rule in one place even though the write is not.
+        # Re-escalation is a self-transition, which the table does not list.
+        if incident.status is not IncidentStatus.ESCALATED and (
+            IncidentStatus.ESCALATED
+            not in ALLOWED_TRANSITIONS.get(incident.status, frozenset())
+        ):
+            logger.warning(
+                "Skipping incident %s: %s cannot be escalated.",
+                incident.id,
+                incident.status.value,
+            )
             continue
 
         level = incident.escalation_level + 1

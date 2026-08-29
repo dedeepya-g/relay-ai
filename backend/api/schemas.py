@@ -167,6 +167,34 @@ class IncidentDetail(RelaySchema):
     decisions: list[DecisionEntry]
 
 
+class StatusUpdateRequest(RelaySchema):
+    """A request to move one incident to a new lifecycle status."""
+
+    new_status: str = Field(
+        description="Target status: 'open', 'assigned', 'in_progress', "
+        "'on_hold', 'escalated', 'resolved', or 'closed'."
+    )
+    notes: str | None = Field(
+        default=None,
+        max_length=2000,
+        description="Context for the change, recorded in the audit trail. "
+        "Required when resolving, where it also becomes the incident's "
+        "resolution notes.",
+    )
+
+
+class StatusUpdateResponse(RelaySchema):
+    """Where an incident ended up after a status change."""
+
+    incident: IncidentSummary
+    previous_status: str
+    changed: bool = Field(
+        description="False when the incident was already in the target status, "
+        "which is accepted rather than treated as an error so a repeated click "
+        "is harmless."
+    )
+
+
 class ResolveReviewRequest(RelaySchema):
     """A person's decision about a report Relay declined to place."""
 

@@ -1,5 +1,5 @@
 /** Formatting helpers for the structured facts the board displays. */
-import type { IncidentSummary, PendingReview, Priority } from './types'
+import type { IncidentStatus, IncidentSummary, PendingReview, Priority } from './types'
 
 export const PRIORITY_RANK: Record<Priority, number> = {
   critical: 0,
@@ -108,11 +108,10 @@ export const ATTENTION_LABEL: Record<AttentionReason, string> = {
 /**
  * Why an incident belongs in the attention band, or null if it does not.
  *
- * Computed client-side from `sla_due_at` as an interim measure: the server-side
- * overdue sweep (`escalate_overdue_incidents`) is not implemented, so nothing
- * writes `escalation_level` yet. This is a deliberate stand-in, not a
- * workaround to unpick later -- when that sweep lands, the escalation branch
- * below starts firing on its own and the rest of this stays correct.
+ * Escalation is authoritative and comes from the server's overdue sweep. The
+ * overdue and due-soon branches are computed client-side from `sla_due_at`,
+ * which is what lets a deadline pass on screen between polls without waiting
+ * for a sweep to notice.
  */
 export function attentionReason(
   incident: IncidentSummary,
@@ -207,6 +206,29 @@ const CATEGORY_LABELS: Record<string, string> = {
 export function categoryLabel(category: string | null): string {
   if (!category) return 'Unclassified'
   return CATEGORY_LABELS[category] ?? category[0].toUpperCase() + category.slice(1)
+}
+
+/**
+ * Every `IncidentStatus` the backend can return, as a coordinator says it.
+ *
+ * `open` reads as "Queued" rather than "Open": on this board every incident
+ * listed is open in the everyday sense, so the enum's word would describe all
+ * of them. What `open` actually means is that no work order has been raised
+ * yet.
+ */
+const STATUS_LABELS: Record<IncidentStatus, string> = {
+  open: 'Queued',
+  assigned: 'Assigned',
+  in_progress: 'In progress',
+  on_hold: 'On hold',
+  escalated: 'Escalated',
+  resolved: 'Resolved',
+  closed: 'Closed',
+}
+
+/** Incident status as a person would write it. */
+export function statusLabel(status: IncidentStatus): string {
+  return STATUS_LABELS[status] ?? status
 }
 
 /**

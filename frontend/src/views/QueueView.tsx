@@ -19,7 +19,12 @@ import {
   PRIORITY_RANK,
   secondsUntil,
 } from '../lib/format'
-import type { Campus, IncidentSummary, PendingReview } from '../lib/types'
+import type {
+  Campus,
+  IncidentSummary,
+  OverdueSweepResult,
+  PendingReview,
+} from '../lib/types'
 
 interface QueueProps {
   incidents: IncidentSummary[]
@@ -33,6 +38,7 @@ interface QueueProps {
     incidentId?: string,
     note?: string,
   ) => Promise<void>
+  onCheckOverdue: () => Promise<OverdueSweepResult>
 }
 
 /**
@@ -83,8 +89,12 @@ function IncidentRow({
 }) {
   return (
     <button type="button" className="row enter" onClick={() => onOpen(incident.incident_id)}>
+      {/* Escalation is read from `escalation_level`, not from the status field,
+          matching `attentionReason`. A row carries it wherever it appears, and
+          the band's own reason tag is suppressed when it would only repeat it. */}
       <span className="row__flags">
-        {reason && <AttentionTag reason={reason} />}
+        {incident.escalation_level ? <AttentionTag reason="escalated" /> : null}
+        {reason && reason !== 'escalated' && <AttentionTag reason={reason} />}
         <PriorityToken priority={incident.priority} />
       </span>
       <span className="row__main">
@@ -232,7 +242,36 @@ export function QueueView({
   now,
   onOpen,
   onResolve,
+  onCheckOverdue,
 }: QueueProps) {
+  const [sweeping, setSweeping] = useState(false)
+  const [sweepNote, setSweepNote] = useState<string | null>(null)
+
+  /**
+   * Relay is meant to run this on a schedule; nothing schedules it yet, so the
+   * board offers it by hand. The counts are reported separately because they
+   * differ for a reason worth seeing: an incident inside its grace period or
+   * repeat interval is overdue but deliberately not raised.
+   */
+  async function runSweep() {
+    setSweeping(true)
+    setSweepNote(null)
+    try {
+      const result = await onCheckOverdue()
+      setSweepNote(
+        result.escalated_count > 0
+          ? `Escalated ${result.escalated_count} of ${result.checked_count} overdue`
+          : result.checked_count > 0
+            ? `${result.checked_count} overdue, none due to be raised yet`
+            : 'Nothing past its deadline',
+      )
+    } catch (caught) {
+      setSweepNote(caught instanceof Error ? caught.message : 'The sweep did not run.')
+    } finally {
+      setSweeping(false)
+    }
+  }
+
   const attention = buildAttention(incidents, reviews, now)
 
   const flaggedIds = new Set(
@@ -258,6 +297,28 @@ export function QueueView({
       <div className="section-head">
         <h2 className="panel__title">Needs your attention</h2>
         <span className="label">{attention.length} of {incidents.length + reviews.length}</span>
+        <span
+          style={{
+            marginLeft: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+          }}
+        >
+          {sweepNote && (
+            <span className="hint" role="status" aria-live="polite">
+              {sweepNote}
+            </span>
+          )}
+          <button
+            type="button"
+            className="btn btn--sm"
+            disabled={sweeping}
+            onClick={() => void runSweep()}
+          >
+            {sweeping ? 'Checking…' : 'Check overdue'}
+          </button>
+        </span>
       </div>
 
       <div className={`panel attention${attention.length === 0 ? ' attention--calm' : ''}`}>

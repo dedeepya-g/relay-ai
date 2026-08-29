@@ -9,9 +9,12 @@
 import type {
   Campus,
   IncidentDetail,
+  IncidentStatus,
   IncidentSummary,
+  OverdueSweepResult,
   PendingReview,
   ReportIntakeResult,
+  StatusUpdateResult,
 } from './types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
@@ -89,6 +92,32 @@ export function submitReport(input: SubmitReportInput): Promise<ReportIntakeResu
   if (input.room) body.append('room', input.room)
   if (input.photo) body.append('photo', input.photo)
   return request<ReportIntakeResult>('/reports', { method: 'POST', body })
+}
+
+/**
+ * Move an incident to a new lifecycle status.
+ *
+ * The server owns which transitions are legal and refuses the rest, so the UI
+ * offering only the legal next steps is a convenience rather than the check.
+ * A rejected transition arrives here as an `ApiError` carrying the server's
+ * own explanation, which is written to be shown to a person.
+ */
+export function updateIncidentStatus(
+  incidentId: string,
+  newStatus: IncidentStatus,
+  notes?: string,
+): Promise<StatusUpdateResult> {
+  const trimmed = notes?.trim()
+  return request<StatusUpdateResult>(`/incidents/${incidentId}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ new_status: newStatus, notes: trimmed ? trimmed : null }),
+  })
+}
+
+/** Run one pass of the overdue sweep, escalating anything past its deadline. */
+export function checkOverdue(): Promise<OverdueSweepResult> {
+  return request<OverdueSweepResult>('/admin/check-overdue', { method: 'POST' })
 }
 
 /**
