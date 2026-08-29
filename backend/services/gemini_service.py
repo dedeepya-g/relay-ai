@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import time
 from functools import lru_cache
-from typing import Any, TypeVar
+from typing import TypeVar
 
 from google import genai
 from google.genai import types
@@ -205,34 +205,3 @@ def generate_structured(
         f"Gemini did not return a usable {response_model.__name__} after "
         f"{DEFAULT_MAX_RETRIES + 1} attempts: {last_error}"
     ) from last_error
-
-
-def embed_text(texts: list[str]) -> list[list[float]]:
-    """Embed report descriptions for similarity-based duplicate shortlisting.
-
-    Args:
-        texts: Descriptions to embed.
-
-    Returns:
-        One embedding vector per input, in the same order.
-
-    Raises:
-        GeminiError: If the embedding call fails.
-    """
-    raise NotImplementedError
-
-
-def describe_photo(image: tuple[bytes, str], prompt: str) -> dict[str, Any]:
-    """Extract structured observations from a report photo.
-
-    Args:
-        image: ``(bytes, content_type)`` pair for the photo.
-        prompt: Instruction describing what to look for, e.g. severity cues.
-
-    Returns:
-        Parsed observations to merge into the report's triage result.
-
-    Raises:
-        GeminiError: If the call fails or returns unusable output.
-    """
-    raise NotImplementedError
