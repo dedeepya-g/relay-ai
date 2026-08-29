@@ -14,19 +14,34 @@ Built with Gemini 3.5 on Vertex AI for the All Things Agentic Hackathon
 
 Built and tested end to end: report classification, duplicate detection with a
 human-review path for ambiguous cases, deterministic priority and SLA
-derivation, and routing to the owning team. A photo attached to a report is
-analyzed alongside its text.
+derivation, and routing to the owning team. Triage is multimodal: a photo
+already stored for a report is analyzed alongside its text, though nothing
+stores one yet, so that path is not reachable through the API.
+
+The pipeline is reachable over HTTP. These four endpoints were exercised with
+`curl` against a running server, reproducing the pipeline tests exactly:
+
+- `POST /reports` submits a report and runs it through the full pipeline,
+  returning the outcome, priority, team, and the reasoning behind each.
+- `GET /incidents` lists incidents that are still live work.
+- `GET /incidents/{id}` returns one incident with its linked reports and its
+  decision trail, each entry recording whether an agent or a person decided it
+  and which model, if any, produced the judgment.
+- `POST /reports/{id}/resolve` applies a person's decision to a report Relay
+  paused for review.
 
 Not yet implemented:
 
 - Work order dispatch, resolution tracking, and overdue escalation
   (`create_work_order`, `update_incident_status`,
-  `escalate_overdue_incidents`).
+  `escalate_overdue_incidents`, `list_overdue_incidents`, and the work-order
+  helpers in `firestore_service`).
 - Photo upload and signed-URL serving (`upload_report_photo`,
-  `generate_signed_url`). Photo analysis works against a stored object, but
-  nothing stores one yet.
-- HTTP intake. The API exposes only `/healthz`, so the pipeline currently runs
-  from Python rather than from the React frontend, which is still a scaffold.
+  `generate_signed_url`). A photo sent to `POST /reports` is accepted and
+  discarded: it is neither stored nor analyzed, and the response reports
+  `photo_stored: false` rather than implying otherwise.
+- The React frontend, which checks that the backend is reachable and nothing
+  more. There is no intake form or dashboard; the API is driven by `curl`.
 - Voice intake. `ReportSource.VOICE` is an unused enum value.
 
 ## How Relay reasons
