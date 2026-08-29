@@ -15,7 +15,7 @@ from datetime import timedelta
 from typing import Any
 
 from models.campus_config import CampusConfig
-from models.common import DecisionType, Priority
+from models.common import DecisionActor, DecisionType, Priority
 from models.decision import Decision
 from models.incident import Incident
 from models.report import Report
@@ -188,6 +188,7 @@ def assign_priority(incident_id: str) -> dict[str, Any]:
         Decision(
             campus_id=incident.campus_id,
             decision_type=DecisionType.PRIORITIZATION,
+            decided_by=DecisionActor.RULE,
             subject_type="incidents",
             subject_id=incident_id,
             outcome=f"priority {priority.value}",

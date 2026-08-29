@@ -15,6 +15,7 @@ from typing import Any
 
 from models.campus_config import CampusConfig
 from models.common import (
+    DecisionActor,
     DecisionType,
     IncidentStatus,
     IssueCategory,
@@ -187,6 +188,7 @@ def escalate_overdue_incidents(campus_id: str) -> dict[str, Any]:
             Decision(
                 campus_id=campus_id,
                 decision_type=DecisionType.ESCALATION,
+                decided_by=DecisionActor.RULE,
                 subject_type="incidents",
                 subject_id=incident.id,
                 outcome=f"escalated to level {level}",

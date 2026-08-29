@@ -548,6 +548,18 @@ p {
   background: var(--paper);
 }
 
+.entry--rule::before {
+  width: 5px;
+  height: 5px;
+  margin: 1px;
+  border-color: var(--rule);
+  background: var(--rule);
+}
+
+.entry--agent::before {
+  background: var(--signal);
+}
+
 .entry--human {
   margin-left: -0.5rem;
   padding-left: 1.625rem;
@@ -590,7 +602,23 @@ p {
   color: var(--slate);
 }
 
-.entry--human .entry__by {
+.entry__by--model {
+  color: var(--signal);
+  border-color: var(--signal);
+  background: var(--signal-tint);
+}
+
+.entry__by--rule {
+  color: var(--slate);
+}
+
+.entry__by--agent {
+  color: var(--paper);
+  background: var(--signal);
+  border-color: var(--signal);
+}
+
+.entry__by--human {
   color: var(--paper);
   background: var(--ink);
   border-color: var(--ink);

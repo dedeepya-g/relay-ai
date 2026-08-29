@@ -63,6 +63,15 @@ class ReportIntakeResponse(RelaySchema):
         description="Explanation from each stage that made a judgment, keyed by "
         "stage: triage, deduplication, prioritization, routing.",
     )
+    coordinator_actions: list[str] = Field(
+        default_factory=list,
+        description="Follow-up actions the incident coordinator took after the "
+        "pipeline finished; empty when it judged none were needed.",
+    )
+    coordinator_reasoning: str | None = Field(
+        default=None,
+        description="The coordinator's own explanation of what it decided.",
+    )
     work_order_ticket: str | None = Field(
         default=None,
         description="Dispatch ticket raised for the owning team; null while a "
@@ -133,7 +142,11 @@ class DecisionEntry(RelaySchema):
 
     decision_id: str
     decision_type: str
-    decided_by: str = Field(description="'agent' or 'human'.")
+    decided_by: str = Field(
+        description="What executed the decision: 'model' for a language-model "
+        "judgment, 'rule' for deterministic policy, 'agent' for the "
+        "coordinating agent, or 'human' for a person.",
+    )
     subject_id: str
     outcome: str
     rationale: str

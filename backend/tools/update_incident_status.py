@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from models.common import DecisionType, IncidentStatus, utc_now
+from models.common import DecisionActor, DecisionType, IncidentStatus, utc_now
 from models.decision import Decision
 from services.firestore_service import get_incident, record_decision, update_incident
 
@@ -114,6 +114,7 @@ def update_incident_status(
         Decision(
             campus_id=incident.campus_id,
             decision_type=DecisionType.RESOLUTION,
+            decided_by=DecisionActor.RULE,
             subject_type="incidents",
             subject_id=incident_id,
             outcome=f"{incident.status.value} to {target.value}",

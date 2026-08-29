@@ -25,8 +25,10 @@ class Decision(RelayModel):
     # --- What was decided ---------------------------------------------------
     decision_type: DecisionType
     decided_by: DecisionActor = Field(
-        default=DecisionActor.AGENT,
-        description="Whether Relay decided this autonomously or a person did.",
+        description="What executed this decision: a model judgment, a "
+        "deterministic rule, the coordinating agent, or a person. Required, "
+        "because a default would silently mislabel whichever kind it did not "
+        "match.",
     )
     subject_type: str = Field(
         description="Collection the decision applies to, e.g. 'incidents'."
