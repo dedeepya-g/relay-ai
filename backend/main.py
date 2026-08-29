@@ -15,6 +15,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.routes import router
 from config import configure_logging, get_settings
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "PATCH"],
         allow_headers=["Content-Type"],
     )
+    application.include_router(router)
     return application
 
 

@@ -165,8 +165,26 @@ def list_open_incidents(campus_id: str, limit: int = 100) -> list[Incident]:
     Args:
         campus_id: Campus to scope the query to.
         limit: Maximum number of incidents to return.
+
+    Returns:
+        Live incidents, newest first.
     """
-    raise NotImplementedError
+    query = (
+        _collection(INCIDENTS_COLLECTION)
+        .where(filter=FieldFilter("campus_id", "==", campus_id))
+        .limit(CANDIDATE_FETCH_LIMIT)
+    )
+    incidents = [
+        Incident.from_firestore(snapshot.id, snapshot.to_dict())
+        for snapshot in query.stream()
+    ]
+    live = [
+        incident
+        for incident in incidents
+        if incident.status in ACTIVE_INCIDENT_STATUSES
+    ]
+    live.sort(key=lambda incident: incident.created_at, reverse=True)
+    return live[:limit]
 
 
 def list_deduplication_candidates(
@@ -269,8 +287,21 @@ def record_decision(decision: Decision) -> Decision:
 
 
 def list_decisions_for_subject(subject_id: str, limit: int = 50) -> list[Decision]:
-    """Return decisions affecting one report or incident, newest first."""
-    raise NotImplementedError
+    """Return decisions affecting one report or incident, newest first.
+
+    Args:
+        subject_id: Report or incident the decisions are about.
+        limit: Maximum number of decisions to return.
+    """
+    query = _collection(DECISIONS_COLLECTION).where(
+        filter=FieldFilter("subject_id", "==", subject_id)
+    )
+    decisions = [
+        Decision.from_firestore(snapshot.id, snapshot.to_dict())
+        for snapshot in query.stream()
+    ]
+    decisions.sort(key=lambda decision: decision.created_at, reverse=True)
+    return decisions[:limit]
 
 
 # --- Campus configuration ---------------------------------------------------
