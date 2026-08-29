@@ -10,7 +10,11 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
+from google.cloud import firestore
+
+from config import get_firestore_client
 from models.campus_config import CampusConfig
+from models.common import utc_now
 from models.decision import Decision
 from models.incident import Incident
 from models.report import Report
@@ -23,6 +27,11 @@ INCIDENTS_COLLECTION = "incidents"
 WORK_ORDERS_COLLECTION = "work_orders"
 DECISIONS_COLLECTION = "decisions"
 CAMPUS_CONFIGS_COLLECTION = "campus_configs"
+
+
+def _collection(name: str) -> firestore.CollectionReference:
+    """Return a reference to a top-level collection on the cached client."""
+    return get_firestore_client().collection(name)
 
 
 # --- Reports ----------------------------------------------------------------
@@ -170,10 +179,41 @@ def list_decisions_for_subject(subject_id: str, limit: int = 50) -> list[Decisio
 
 
 def get_campus_config(campus_id: str) -> CampusConfig | None:
-    """Fetch a campus configuration, or ``None`` if it has not been seeded."""
-    raise NotImplementedError
+    """Fetch a campus configuration, or ``None`` if it has not been seeded.
+
+    Args:
+        campus_id: Campus whose configuration to read.
+
+    Returns:
+        The validated configuration, or ``None`` if no document exists.
+
+    Raises:
+        pydantic.ValidationError: If a stored document no longer matches the
+            current schema, which means the campus needs re-seeding rather than
+            that it is unconfigured.
+    """
+    snapshot = _collection(CAMPUS_CONFIGS_COLLECTION).document(campus_id).get()
+    if not snapshot.exists:
+        return None
+    return CampusConfig.from_firestore(snapshot.id, snapshot.to_dict())
 
 
 def upsert_campus_config(config: CampusConfig) -> CampusConfig:
-    """Create or replace a campus configuration document."""
-    raise NotImplementedError
+    """Create or replace a campus configuration document.
+
+    The write replaces the document wholesale rather than merging, so a field
+    removed from the configuration is removed from Firestore too and stale
+    policy cannot survive a re-seed.
+
+    Args:
+        config: Configuration to store; its ``id`` becomes the document id.
+
+    Returns:
+        The stored configuration, with ``updated_at`` set to the write time.
+    """
+    stored = config.model_copy(update={"updated_at": utc_now()})
+    _collection(CAMPUS_CONFIGS_COLLECTION).document(stored.id).set(
+        stored.to_firestore()
+    )
+    logger.info("Wrote campus configuration %s", stored.id)
+    return stored

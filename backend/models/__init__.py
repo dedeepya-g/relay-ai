@@ -5,6 +5,7 @@ from models.campus_config import (
     CampusConfig,
     EscalationPolicy,
     MaintenanceTeam,
+    Room,
 )
 from models.common import (
     DecisionType,
@@ -15,6 +16,7 @@ from models.common import (
     RelayModel,
     ReportSource,
     ReportStatus,
+    RoomType,
     WorkOrderStatus,
     new_id,
     utc_now,
@@ -40,6 +42,8 @@ __all__ = [
     "Report",
     "ReportSource",
     "ReportStatus",
+    "Room",
+    "RoomType",
     "WorkOrder",
     "WorkOrderStatus",
     "new_id",

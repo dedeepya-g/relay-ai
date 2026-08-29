@@ -44,6 +44,7 @@ class IssueCategory(StrEnum):
     PLUMBING = "plumbing"
     ELECTRICAL = "electrical"
     HVAC = "hvac"
+    ACCESS = "access"
     CUSTODIAL = "custodial"
     STRUCTURAL = "structural"
     SAFETY = "safety"
@@ -52,6 +53,22 @@ class IssueCategory(StrEnum):
     ELEVATOR = "elevator"
     PEST = "pest"
     OTHER = "other"
+
+
+class RoomType(StrEnum):
+    """How a room is used, which shapes both urgency and access constraints.
+
+    A burst pipe in a lab threatens equipment, the same pipe in a corridor does
+    not; a restroom fault is reported by many people at once, an office fault by
+    one. Routing and deduplication both read this.
+    """
+
+    CLASSROOM = "classroom"
+    OFFICE = "office"
+    RESTROOM = "restroom"
+    LAB = "lab"
+    COMMON_AREA = "common_area"
+    ELEVATOR_LOBBY = "elevator_lobby"
 
 
 class ReportSource(StrEnum):

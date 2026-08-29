@@ -21,8 +21,10 @@ logger = logging.getLogger(__name__)
 
 _ENV_FILE = Path(__file__).resolve().parent / ".env"
 
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
-DEFAULT_GEMINI_LOCATION = "us-central1"
+DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
+# Gemini 3.x is served from the multi-region "global" endpoint, not from
+# individual regions such as us-central1, where the model ids return 404.
+DEFAULT_GEMINI_LOCATION = "global"
 DEFAULT_FIRESTORE_DATABASE = "(default)"
 DEFAULT_CAMPUS_ID = "relay-university"
 DEFAULT_SIGNED_URL_TTL_SECONDS = 3600

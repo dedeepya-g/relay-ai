@@ -4,9 +4,27 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
-from models.common import IssueCategory, Priority, RelayModel, utc_now
+from models.common import IssueCategory, Priority, RelayModel, RoomType, utc_now
+
+
+class Room(RelayModel):
+    """A addressable space within a building.
+
+    Rooms are the finest location grain Relay matches on. Two reports naming
+    the same room are far likelier to describe one incident than two reports
+    naming only the same building, so deduplication leans on this.
+    """
+
+    number: str = Field(description="Room number as posted on the door, e.g. '318'.")
+    floor: str = Field(description="Floor label; must appear in the building's floors.")
+    room_type: RoomType = Field(description="How the room is used.")
+    name: str | None = Field(
+        default=None,
+        description="Display label for spaces people name rather than number, "
+        "e.g. 'North Restroom' or 'Third Floor Elevator Lobby'.",
+    )
 
 
 class Building(RelayModel):
@@ -22,6 +40,26 @@ class Building(RelayModel):
     floors: list[str] = Field(
         default_factory=list, description="Floor labels, e.g. ['B1', '1', '2']."
     )
+    rooms: list[Room] = Field(
+        default_factory=list,
+        description="Known rooms, used to resolve free-text locations and to "
+        "match reports at room granularity.",
+    )
+
+    @model_validator(mode="after")
+    def _check_room_floors(self) -> "Building":
+        """Reject rooms on floors the building does not have.
+
+        A room whose floor is not in ``floors`` can never be matched by a
+        location lookup, so it is a seeding bug rather than valid data.
+        """
+        unknown = sorted({room.floor for room in self.rooms} - set(self.floors))
+        if unknown:
+            raise ValueError(
+                f"Building {self.id!r} has rooms on undeclared floors: "
+                f"{', '.join(unknown)}."
+            )
+        return self
 
 
 class MaintenanceTeam(RelayModel):
@@ -81,8 +119,16 @@ class CampusConfig(RelayModel):
     )
     buildings: list[Building] = Field(default_factory=list)
     teams: list[MaintenanceTeam] = Field(default_factory=list)
-    sla_hours: dict[Priority, float] = Field(
-        description="Hours allowed to resolve an incident, keyed by priority."
+    sla_minutes: dict[Priority, int] = Field(
+        description="Minutes allowed to resolve an incident, keyed by priority. "
+        "Minutes rather than hours so a demo can watch an SLA breach and the "
+        "resulting escalation happen live.",
+    )
+    emergency_keywords: list[str] = Field(
+        default_factory=list,
+        description="Lowercase phrases that force a report to critical priority "
+        "regardless of model judgment, drawn from the emergency categories "
+        "facilities departments call out explicitly.",
     )
     escalation_policy: EscalationPolicy = Field(default_factory=EscalationPolicy)
     default_team_id: str | None = Field(
@@ -90,3 +136,25 @@ class CampusConfig(RelayModel):
         description="Team receiving incidents whose category has no owner.",
     )
     updated_at: datetime = Field(default_factory=utc_now)
+
+    @model_validator(mode="after")
+    def _check_references(self) -> "CampusConfig":
+        """Reject a config whose internal references do not resolve.
+
+        ``default_team_id`` pointing at a team that does not exist would strand
+        every unowned category at routing time, and duplicate building or team
+        ids would make lookups ambiguous.
+        """
+        team_ids = [team.id for team in self.teams]
+        if len(team_ids) != len(set(team_ids)):
+            raise ValueError("Team ids must be unique within a campus.")
+
+        building_ids = [building.id for building in self.buildings]
+        if len(building_ids) != len(set(building_ids)):
+            raise ValueError("Building ids must be unique within a campus.")
+
+        if self.default_team_id is not None and self.default_team_id not in team_ids:
+            raise ValueError(
+                f"default_team_id {self.default_team_id!r} does not match any team."
+            )
+        return self
