@@ -6,7 +6,7 @@ describe the same underlying fault, and carries each incident through
 prioritisation, routing, and dispatch while recording the reasoning behind
 every decision.
 
-## The Problem
+## The Problem 
 
 Campus facilities portals collect reports through a flat category dropdown with
 no intelligence behind it, leaving a coordinator to read, classify, and route
