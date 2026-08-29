@@ -13,25 +13,33 @@ import logging
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 
 from api.schemas import (
+    BuildingOption,
+    CampusResponse,
     DecisionEntry,
     IncidentDetail,
     IncidentList,
     IncidentSummary,
     LinkedReport,
+    PendingReview,
+    PendingReviewList,
     ReportIntakeResponse,
     ResolveReviewRequest,
     ResolveReviewResponse,
+    RoomOption,
+    TeamOption,
 )
 from config import get_settings
-from models.common import Location, ReportStatus
+from models.common import DecisionType, Location, ReportStatus
 from models.incident import Incident
 from models.report import Report
 from services.firestore_service import (
     create_report,
+    get_campus_config,
     get_incident,
     get_report,
     list_decisions_for_subject,
     list_open_incidents,
+    list_reports_by_status,
     list_reports_for_incident,
 )
 from tools.assign_priority import assign_priority
@@ -47,7 +55,19 @@ router = APIRouter()
 MAX_INCIDENTS = 200
 
 
-def _summarize(incident: Incident) -> IncidentSummary:
+def _team_names() -> dict[str, str]:
+    """Map team ids to display names from the campus configuration.
+
+    Resolved server-side so a raw API response reads the same way the UI does;
+    a client should never have to know that ``team_plumbing`` means "Plumbing
+    Team". Returns an empty map if the campus is unseeded, in which case the
+    id is shown unresolved rather than the request failing.
+    """
+    config = get_campus_config(get_settings().campus_id)
+    return {team.id: team.name for team in config.teams} if config else {}
+
+
+def _summarize(incident: Incident, team_names: dict[str, str]) -> IncidentSummary:
     """Project an incident onto its list representation."""
     return IncidentSummary(
         incident_id=incident.id,
@@ -59,6 +79,7 @@ def _summarize(incident: Incident) -> IncidentSummary:
         floor=incident.location.floor,
         room=incident.location.room,
         assigned_team_id=incident.assigned_team_id,
+        assigned_team_name=team_names.get(incident.assigned_team_id or ""),
         report_count=len(incident.report_ids),
         sla_due_at=incident.sla_due_at,
         created_at=incident.created_at,
@@ -170,7 +191,8 @@ async def list_incidents(
     the archive.
     """
     incidents = list_open_incidents(get_settings().campus_id, limit=limit)
-    summaries = [_summarize(incident) for incident in incidents]
+    team_names = _team_names()
+    summaries = [_summarize(incident, team_names) for incident in incidents]
     return IncidentList(incidents=summaries, count=len(summaries))
 
 
@@ -198,7 +220,7 @@ async def get_incident_detail(incident_id: str) -> IncidentDetail:
     decisions.sort(key=lambda decision: decision.created_at)
 
     return IncidentDetail(
-        incident=_summarize(incident),
+        incident=_summarize(incident, _team_names()),
         summary=incident.summary,
         reports=[
             LinkedReport(
@@ -276,3 +298,99 @@ async def resolve_report_review(
         incident_id=result["incident_id"],
         resolved_by=result["resolved_by"],
     )
+
+
+@router.get("/campus", response_model=CampusResponse, tags=["campus"])
+async def get_campus() -> CampusResponse:
+    """Return the reference data a client needs to submit and label reports.
+
+    Buildings, floors, and rooms come from the seeded campus configuration, so
+    the locations a reporter can choose are exactly the locations routing and
+    deduplication already understand. Duplicating them in the client would let
+    the two drift apart silently.
+    """
+    config = get_campus_config(get_settings().campus_id)
+    if config is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="This campus has not been configured yet. Seed it with "
+            "scripts/seed_campus_config.py.",
+        )
+
+    return CampusResponse(
+        campus_id=config.id,
+        name=config.name,
+        timezone=config.timezone,
+        buildings=[
+            BuildingOption(
+                building_id=building.id,
+                name=building.name,
+                aliases=building.aliases,
+                floors=building.floors,
+                rooms=[
+                    RoomOption(
+                        number=room.number,
+                        floor=room.floor,
+                        room_type=room.room_type,
+                        name=room.name,
+                    )
+                    for room in building.rooms
+                ],
+            )
+            for building in config.buildings
+        ],
+        teams=[
+            TeamOption(
+                team_id=team.id,
+                name=team.name,
+                categories=team.categories,
+                coverage_hours=team.coverage_hours,
+            )
+            for team in config.teams
+        ],
+        sla_minutes=config.sla_minutes,
+    )
+
+
+@router.get("/reviews", response_model=PendingReviewList, tags=["reports"])
+async def list_pending_reviews() -> PendingReviewList:
+    """List reports Relay declined to place, awaiting a human decision.
+
+    These reports belong to no incident by design, so they cannot be found by
+    walking the incident list. Each carries the reasoning from the
+    deduplication decision that paused it, so a reviewer can see what Relay was
+    unsure about without opening anything.
+    """
+    reports = list_reports_by_status(
+        get_settings().campus_id, ReportStatus.PENDING_REVIEW
+    )
+
+    entries: list[PendingReview] = []
+    for report in reports:
+        paused = next(
+            (
+                decision.rationale
+                for decision in list_decisions_for_subject(report.id)
+                if decision.decision_type is DecisionType.DEDUPLICATION
+            ),
+            "",
+        )
+        entries.append(
+            PendingReview(
+                report_id=report.id,
+                description=report.description,
+                building_id=report.location.building_id,
+                floor=report.location.floor,
+                room=report.location.room,
+                issue_type=report.category,
+                is_potential_emergency=bool(
+                    report.triage and report.triage.is_potential_emergency
+                ),
+                severity_signals=report.triage.severity_signals
+                if report.triage
+                else [],
+                reasoning=paused,
+                submitted_at=report.submitted_at,
+            )
+        )
+    return PendingReviewList(reports=entries, count=len(entries))

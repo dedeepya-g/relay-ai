@@ -2,8 +2,18 @@
  * Typed client for the Relay backend.
  *
  * Every request goes through `request` so base URL handling and error
- * translation stay in one place.
+ * translation stay in one place. Errors carry the server's own message where
+ * there is one, because the API writes messages a person can act on and
+ * replacing them with "something went wrong" would throw that away.
  */
+import type {
+  Campus,
+  IncidentDetail,
+  IncidentSummary,
+  PendingReview,
+  ReportIntakeResult,
+} from './types'
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
 
 export class ApiError extends Error {
@@ -16,26 +26,83 @@ export class ApiError extends Error {
   }
 }
 
-export interface HealthResponse {
-  status: string
-  service: string
+/** True when the API could not be reached at all, as opposed to refusing. */
+export class OfflineError extends Error {
+  readonly baseUrl = API_BASE_URL
+  constructor() {
+    super(`Could not reach the Relay API at ${API_BASE_URL}`)
+    this.name = 'OfflineError'
+  }
 }
 
-/** Issue a JSON request against the Relay API. */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
-  })
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, init)
+  } catch {
+    throw new OfflineError()
+  }
 
   if (!response.ok) {
-    throw new ApiError(`Request to ${path} failed`, response.status)
+    let detail = `Request to ${path} failed`
+    try {
+      const body = (await response.json()) as { detail?: unknown }
+      if (typeof body.detail === 'string') detail = body.detail
+    } catch {
+      /* Non-JSON error body; the default message stands. */
+    }
+    throw new ApiError(detail, response.status)
   }
 
   return (await response.json()) as T
 }
 
-/** Verify the backend is reachable. */
-export function checkHealth(): Promise<HealthResponse> {
-  return request<HealthResponse>('/healthz')
+export function getCampus(): Promise<Campus> {
+  return request<Campus>('/campus')
+}
+
+export function listIncidents(): Promise<{ incidents: IncidentSummary[]; count: number }> {
+  return request('/incidents')
+}
+
+export function getIncident(incidentId: string): Promise<IncidentDetail> {
+  return request<IncidentDetail>(`/incidents/${incidentId}`)
+}
+
+export function listReviews(): Promise<{ reports: PendingReview[]; count: number }> {
+  return request('/reviews')
+}
+
+export interface SubmitReportInput {
+  description: string
+  buildingId: string
+  floor?: string
+  room?: string
+  photo?: File | null
+}
+
+export function submitReport(input: SubmitReportInput): Promise<ReportIntakeResult> {
+  const body = new FormData()
+  body.append('description', input.description)
+  body.append('building_id', input.buildingId)
+  if (input.floor) body.append('floor', input.floor)
+  if (input.room) body.append('room', input.room)
+  if (input.photo) body.append('photo', input.photo)
+  return request<ReportIntakeResult>('/reports', { method: 'POST', body })
+}
+
+export function resolveReview(
+  reportId: string,
+  resolution: 'same_incident' | 'different_incident',
+  incidentId?: string,
+): Promise<{ report_id: string; outcome: string; incident_id: string }> {
+  return request(`/reports/${reportId}/resolve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      resolution,
+      incident_id: incidentId ?? null,
+      note: 'Resolved from the facilities dashboard.',
+    }),
+  })
 }

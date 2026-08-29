@@ -15,7 +15,7 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 
 from config import get_firestore_client
 from models.campus_config import CampusConfig
-from models.common import IncidentStatus, utc_now
+from models.common import IncidentStatus, ReportStatus, utc_now
 from models.decision import Decision
 from models.incident import Incident
 from models.report import Report
@@ -98,6 +98,33 @@ def update_report(report_id: str, fields: dict[str, object]) -> Report:
     document.update(fields)
     snapshot = document.get()
     return Report.from_firestore(snapshot.id, snapshot.to_dict())
+
+
+def list_reports_by_status(
+    campus_id: str, status: ReportStatus, limit: int = 100
+) -> list[Report]:
+    """Return reports in one lifecycle state, newest submission first.
+
+    Used for the human-review queue: reports Relay declined to place are not
+    attached to any incident, so they cannot be reached by walking incidents.
+
+    Args:
+        campus_id: Campus to scope the query to.
+        status: Lifecycle state to match.
+        limit: Maximum number of reports to return.
+    """
+    query = (
+        _collection(REPORTS_COLLECTION)
+        .where(filter=FieldFilter("campus_id", "==", campus_id))
+        .where(filter=FieldFilter("status", "==", status.value))
+        .limit(limit)
+    )
+    reports = [
+        Report.from_firestore(snapshot.id, snapshot.to_dict())
+        for snapshot in query.stream()
+    ]
+    reports.sort(key=lambda report: report.submitted_at, reverse=True)
+    return reports
 
 
 def list_reports_for_incident(incident_id: str) -> list[Report]:

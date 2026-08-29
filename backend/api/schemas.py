@@ -12,7 +12,13 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from models.common import IncidentStatus, IssueCategory, Priority, ReportStatus
+from models.common import (
+    IncidentStatus,
+    IssueCategory,
+    Priority,
+    ReportStatus,
+    RoomType,
+)
 
 
 class RelaySchema(BaseModel):
@@ -81,6 +87,11 @@ class IncidentSummary(RelaySchema):
     floor: str | None = None
     room: str | None = None
     assigned_team_id: str | None = None
+    assigned_team_name: str | None = Field(
+        default=None,
+        description="Display name of the owning team, resolved from the campus "
+        "configuration so callers never have to map team ids themselves.",
+    )
     report_count: int
     sla_due_at: datetime | None = None
     created_at: datetime
@@ -158,3 +169,76 @@ class ResolveReviewResponse(RelaySchema):
     outcome: str = Field(description="'merged' or 'new_incident'.")
     incident_id: str
     resolved_by: str = Field(description="Always 'human' for this endpoint.")
+
+
+# --- Campus reference data --------------------------------------------------
+
+
+class RoomOption(RelaySchema):
+    """One room a reporter can select."""
+
+    number: str
+    floor: str
+    room_type: RoomType
+    name: str | None = None
+
+
+class BuildingOption(RelaySchema):
+    """One building, with the floors and rooms a reporter can select."""
+
+    building_id: str
+    name: str
+    aliases: list[str] = Field(default_factory=list)
+    floors: list[str] = Field(default_factory=list)
+    rooms: list[RoomOption] = Field(default_factory=list)
+
+
+class TeamOption(RelaySchema):
+    """One maintenance team, and what it owns."""
+
+    team_id: str
+    name: str
+    categories: list[IssueCategory] = Field(default_factory=list)
+    coverage_hours: str
+
+
+class CampusResponse(RelaySchema):
+    """Reference data a client needs to submit a report and label a queue.
+
+    Served from the seeded campus configuration rather than duplicated in the
+    client, so the locations a reporter can choose are exactly the locations
+    routing and deduplication know about.
+    """
+
+    campus_id: str
+    name: str
+    timezone: str
+    buildings: list[BuildingOption]
+    teams: list[TeamOption]
+    sla_minutes: dict[Priority, int]
+
+
+class PendingReview(RelaySchema):
+    """A report Relay declined to place, awaiting a person."""
+
+    report_id: str
+    description: str
+    building_id: str
+    floor: str | None = None
+    room: str | None = None
+    issue_type: IssueCategory | None = None
+    is_potential_emergency: bool = False
+    severity_signals: list[str] = Field(default_factory=list)
+    reasoning: str = Field(
+        default="",
+        description="Why Relay could not place this report, from the "
+        "deduplication decision that paused it.",
+    )
+    submitted_at: datetime
+
+
+class PendingReviewList(RelaySchema):
+    """Everything currently waiting on a human decision."""
+
+    reports: list[PendingReview]
+    count: int
