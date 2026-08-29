@@ -11,10 +11,11 @@ import logging
 from datetime import datetime
 
 from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 from config import get_firestore_client
 from models.campus_config import CampusConfig
-from models.common import utc_now
+from models.common import IncidentStatus, utc_now
 from models.decision import Decision
 from models.incident import Incident
 from models.report import Report
@@ -27,6 +28,25 @@ INCIDENTS_COLLECTION = "incidents"
 WORK_ORDERS_COLLECTION = "work_orders"
 DECISIONS_COLLECTION = "decisions"
 CAMPUS_CONFIGS_COLLECTION = "campus_configs"
+
+#: Statuses in which an incident is still live work and can absorb a duplicate
+#: report. A resolved or closed incident should not swallow a new report: if the
+#: problem recurred, that is a new incident with its own SLA.
+ACTIVE_INCIDENT_STATUSES = frozenset(
+    {
+        IncidentStatus.OPEN,
+        IncidentStatus.ASSIGNED,
+        IncidentStatus.IN_PROGRESS,
+        IncidentStatus.ON_HOLD,
+    }
+)
+
+#: Upper bound on documents pulled per deduplication sweep. Status and recency
+#: are filtered in Python rather than in the query so that the read needs only
+#: two equality filters and no composite index; this caps the cost of that
+#: choice. A building with more live incidents than this is past the point
+#: where automatic deduplication should be trusted anyway.
+CANDIDATE_FETCH_LIMIT = 200
 
 
 def _collection(name: str) -> firestore.CollectionReference:
@@ -46,12 +66,17 @@ def create_report(report: Report) -> Report:
     Returns:
         The stored report.
     """
-    raise NotImplementedError
+    _collection(REPORTS_COLLECTION).document(report.id).set(report.to_firestore())
+    logger.info("Created report %s for campus %s", report.id, report.campus_id)
+    return report
 
 
 def get_report(report_id: str) -> Report | None:
     """Fetch one report by id, or ``None`` if it does not exist."""
-    raise NotImplementedError
+    snapshot = _collection(REPORTS_COLLECTION).document(report_id).get()
+    if not snapshot.exists:
+        return None
+    return Report.from_firestore(snapshot.id, snapshot.to_dict())
 
 
 def update_report(report_id: str, fields: dict[str, object]) -> Report:
@@ -61,15 +86,31 @@ def update_report(report_id: str, fields: dict[str, object]) -> Report:
         report_id: Report to update.
         fields: Field paths to values, e.g. ``{"status": ReportStatus.TRIAGED}``.
 
+    Returns:
+        The report as stored after the update.
+
     Raises:
         KeyError: If the report does not exist.
     """
-    raise NotImplementedError
+    document = _collection(REPORTS_COLLECTION).document(report_id)
+    if not document.get().exists:
+        raise KeyError(f"No report {report_id!r}.")
+    document.update(fields)
+    snapshot = document.get()
+    return Report.from_firestore(snapshot.id, snapshot.to_dict())
 
 
 def list_reports_for_incident(incident_id: str) -> list[Report]:
     """Return every report merged into an incident, oldest submission first."""
-    raise NotImplementedError
+    query = _collection(REPORTS_COLLECTION).where(
+        filter=FieldFilter("incident_id", "==", incident_id)
+    )
+    reports = [
+        Report.from_firestore(snapshot.id, snapshot.to_dict())
+        for snapshot in query.stream()
+    ]
+    reports.sort(key=lambda report: report.submitted_at)
+    return reports
 
 
 # --- Incidents --------------------------------------------------------------
@@ -77,7 +118,16 @@ def list_reports_for_incident(incident_id: str) -> list[Report]:
 
 def create_incident(incident: Incident) -> Incident:
     """Persist a new incident opened from a report."""
-    raise NotImplementedError
+    _collection(INCIDENTS_COLLECTION).document(incident.id).set(
+        incident.to_firestore()
+    )
+    logger.info(
+        "Opened incident %s (%s) in %s",
+        incident.id,
+        incident.category.value,
+        incident.location.building_id,
+    )
+    return incident
 
 
 def get_incident(incident_id: str) -> Incident | None:
@@ -121,8 +171,28 @@ def list_deduplication_candidates(
         building_id: Building the new report points at.
         since: Earliest incident creation time to consider.
         limit: Maximum number of candidates to return.
+
+    Returns:
+        Live incidents in the building created at or after ``since``, newest
+        first.
     """
-    raise NotImplementedError
+    query = (
+        _collection(INCIDENTS_COLLECTION)
+        .where(filter=FieldFilter("campus_id", "==", campus_id))
+        .where(filter=FieldFilter("location.building_id", "==", building_id))
+        .limit(CANDIDATE_FETCH_LIMIT)
+    )
+    incidents = [
+        Incident.from_firestore(snapshot.id, snapshot.to_dict())
+        for snapshot in query.stream()
+    ]
+    live = [
+        incident
+        for incident in incidents
+        if incident.status in ACTIVE_INCIDENT_STATUSES and incident.created_at >= since
+    ]
+    live.sort(key=lambda incident: incident.created_at, reverse=True)
+    return live[:limit]
 
 
 def list_overdue_incidents(campus_id: str, as_of: datetime) -> list[Incident]:

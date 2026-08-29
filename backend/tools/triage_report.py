@@ -18,10 +18,11 @@ from typing import Any
 
 from models.campus_config import CampusConfig
 from models.common import IssueCategory
+from models.common import ReportStatus, utc_now
 from models.report import Report
 from models.triage import TriageResult
-from services.firestore_service import get_campus_config
-from services.gemini_service import generate_structured
+from services.firestore_service import get_campus_config, get_report, update_report
+from services.gemini_service import GeminiError, generate_structured
 
 logger = logging.getLogger(__name__)
 
@@ -241,17 +242,46 @@ def analyze_report(
 def triage_report(report_id: str) -> dict[str, Any]:
     """Read a facility report and extract what it is actually about.
 
-    Call this first for every new report, before looking for duplicates.
-    Combines the reporter's text with the attached photo, if any, to produce a
-    normalized summary, an issue category, a resolved campus location, and the
-    keywords later used to match duplicates.
+    Call this first for every new report, before looking for duplicates. Reads
+    the report, combines the reporter's text with the attached photo if there
+    is one, and stores the classification back onto the report so later steps
+    and the audit trail can read it.
 
     Args:
         report_id: Id of the report to triage.
 
     Returns:
-        A dict with keys ``report_id``, ``summary``, ``category``,
-        ``location``, ``keywords``, ``severity_signals``, and ``confidence``;
-        or ``{"error": ...}`` if the report does not exist.
+        A dict with keys ``report_id``, ``status``, ``issue_type``,
+        ``severity_signals``, ``is_potential_emergency``, ``missing_fields``,
+        and ``confidence_note``; or ``{"error": ...}`` if the report does not
+        exist or could not be triaged.
     """
-    raise NotImplementedError
+    report = get_report(report_id)
+    if report is None:
+        return {"error": f"No report {report_id!r}."}
+
+    try:
+        result = analyze_report(report)
+    except GeminiError as exc:
+        logger.exception("Triage failed for report %s", report_id)
+        return {"error": f"Could not triage report {report_id!r}: {exc}"}
+
+    update_report(
+        report_id,
+        {
+            "triage": result.to_firestore(),
+            "category": result.issue_type.value,
+            "status": ReportStatus.TRIAGED.value,
+            "triaged_at": utc_now(),
+        },
+    )
+
+    return {
+        "report_id": report_id,
+        "status": ReportStatus.TRIAGED.value,
+        "issue_type": result.issue_type.value,
+        "severity_signals": result.severity_signals,
+        "is_potential_emergency": result.is_potential_emergency,
+        "missing_fields": [field.value for field in result.missing_fields],
+        "confidence_note": result.confidence_note,
+    }

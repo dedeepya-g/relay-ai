@@ -15,6 +15,7 @@ from models.common import (
     new_id,
     utc_now,
 )
+from models.triage import TriageResult
 
 
 class Report(RelayModel):
@@ -67,6 +68,12 @@ class Report(RelayModel):
     keywords: list[str] = Field(
         default_factory=list,
         description="Salient terms extracted during triage, used to match duplicates.",
+    )
+    triage: TriageResult | None = Field(
+        default=None,
+        description="Full structured triage output, kept alongside the "
+        "denormalized ``category`` so the audit trail retains the urgency "
+        "signals and stated uncertainty behind the classification.",
     )
 
     # --- Timestamps ---------------------------------------------------------

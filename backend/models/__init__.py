@@ -22,6 +22,7 @@ from models.common import (
     utc_now,
 )
 from models.decision import Decision
+from models.duplicate import DuplicateDecision, DuplicateVerdict
 from models.incident import Incident
 from models.report import Report
 from models.triage import MissingField, TriageResult
@@ -32,6 +33,8 @@ __all__ = [
     "CampusConfig",
     "Decision",
     "DecisionType",
+    "DuplicateDecision",
+    "DuplicateVerdict",
     "EscalationPolicy",
     "Incident",
     "IncidentStatus",
