@@ -15,8 +15,17 @@ logger = logging.getLogger(__name__)
 #: -- reopening a resolved incident, closing one nobody worked -- fails at the
 #: boundary instead of quietly rewriting history a team acted on.
 ALLOWED_TRANSITIONS: dict[IncidentStatus, frozenset[IncidentStatus]] = {
+    # ESCALATED is reachable from OPEN because the overdue sweep escalates on
+    # the deadline alone, and an incident whose dispatch failed sits in OPEN
+    # while its clock still runs. Omitting it here would have made the sweep's
+    # own write illegal by this table.
     IncidentStatus.OPEN: frozenset(
-        {IncidentStatus.ASSIGNED, IncidentStatus.IN_PROGRESS, IncidentStatus.ON_HOLD}
+        {
+            IncidentStatus.ASSIGNED,
+            IncidentStatus.IN_PROGRESS,
+            IncidentStatus.ON_HOLD,
+            IncidentStatus.ESCALATED,
+        }
     ),
     IncidentStatus.ASSIGNED: frozenset(
         {

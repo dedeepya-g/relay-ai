@@ -64,10 +64,10 @@ export interface IncidentSummary {
   created_at: string
   updated_at: string
   /**
-   * Escalation level, raised only by the overdue sweep. That sweep is not
-   * implemented server-side yet, so this is always 0 today and the queue's
-   * ESCALATED tag never fires. The reader is deliberately in place so that
-   * finishing `escalate_overdue_incidents` lights it up with no UI change.
+   * How many times the overdue sweep has raised this incident; 0 means never.
+   * Written by `escalate_overdue_incidents`, which the queue triggers through
+   * `POST /admin/check-overdue`. Nothing runs it on a schedule yet, so it
+   * advances only when someone asks for a sweep.
    */
   escalation_level?: number
 }
@@ -100,6 +100,36 @@ export interface IncidentDetail {
   summary: string
   reports: LinkedReport[]
   decisions: DecisionEntry[]
+}
+
+export interface EscalationEntry {
+  incident_id: string
+  title: string
+  escalation_level: number
+  minutes_past_deadline: number
+  supporting_team_id: string | null
+  supporting_ticket: string | null
+  work_order_tickets: string[]
+}
+
+export interface OverdueSweepResult {
+  campus_id: string
+  /** Incidents found past their deadline. */
+  checked_count: number
+  /**
+   * Of those, how many the policy actually raised. The two differ when an
+   * incident is inside its grace period or repeat interval, or already at the
+   * policy's maximum level.
+   */
+  escalated_count: number
+  escalations: EscalationEntry[]
+}
+
+export interface StatusUpdateResult {
+  incident: IncidentSummary
+  previous_status: IncidentStatus
+  /** False when the incident was already in the target status. */
+  changed: boolean
 }
 
 export interface PendingReview {

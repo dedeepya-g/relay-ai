@@ -11,7 +11,9 @@ import { StatusBar } from './components/StatusBar'
 import { DetailView } from './views/DetailView'
 import { IntakeView } from './views/IntakeView'
 import { QueueView } from './views/QueueView'
+import { buildAttention } from './lib/format'
 import {
+  checkOverdue,
   getCampus,
   getIncident,
   listIncidents,
@@ -19,11 +21,13 @@ import {
   OfflineError,
   resolveReview,
   submitReport,
+  updateIncidentStatus,
   type SubmitReportInput,
 } from './lib/api'
 import type {
   Campus,
   IncidentDetail,
+  IncidentStatus,
   IncidentSummary,
   PendingReview,
   ReportIntakeResult,
@@ -117,19 +121,37 @@ export default function App() {
       reportId: string,
       resolution: 'same_incident' | 'different_incident',
       incidentId?: string,
+      note?: string,
     ) => {
-      await resolveReview(reportId, resolution, incidentId)
+      await resolveReview(reportId, resolution, incidentId, note)
       await refresh()
     },
     [refresh],
   )
 
-  const attentionCount =
-    reviews.length +
-    incidents.filter((incident) => {
-      if (!incident.sla_due_at) return false
-      return new Date(incident.sla_due_at).getTime() - now <= 60_000
-    }).length
+  // Reload the incident before the queue: the detail view stays on screen and
+  // should show its new status immediately, while the board behind it can
+  // catch up a moment later.
+  const handleChangeStatus = useCallback(
+    async (incidentId: string, newStatus: IncidentStatus, notes?: string) => {
+      await updateIncidentStatus(incidentId, newStatus, notes)
+      setDetail(await getIncident(incidentId))
+      await refresh()
+    },
+    [refresh],
+  )
+
+  // The sweep's own result is returned to the caller so the queue can report
+  // what it did; refreshing first means the board already reflects it.
+  const handleCheckOverdue = useCallback(async () => {
+    const result = await checkOverdue()
+    await refresh()
+    return result
+  }, [refresh])
+
+  // Same function the queue band renders from, so the header count and the
+  // rows below it are always the same set.
+  const attentionCount = buildAttention(incidents, reviews, now).length
   const criticalCount = incidents.filter((item) => item.priority === 'critical').length
 
   return (
@@ -188,6 +210,7 @@ export default function App() {
               now={now}
               onOpen={(id) => void openIncident(id)}
               onResolve={handleResolve}
+              onCheckOverdue={handleCheckOverdue}
             />
           ))}
 
@@ -201,6 +224,7 @@ export default function App() {
                 setView('queue')
                 void refresh()
               }}
+              onChangeStatus={handleChangeStatus}
             />
           ) : (
             <div className="panel">

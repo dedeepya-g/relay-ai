@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { PriorityToken } from '../components/PriorityToken'
-import { categoryLabel } from '../lib/format'
+import { categoryLabel, floorLabel } from '../lib/format'
 import type { Campus, ReportIntakeResult } from '../lib/types'
 
 interface IntakeProps {
@@ -202,7 +202,7 @@ export function IntakeView({
             <option value="">Not sure</option>
             {building?.floors.map((item) => (
               <option key={item} value={item}>
-                {item === 'B1' ? 'Basement' : `Floor ${item}`}
+                {floorLabel(item)}
               </option>
             ))}
           </select>
