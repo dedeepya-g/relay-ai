@@ -2,11 +2,12 @@
  * Incident detail. The ledger is the point of this screen, so it takes the
  * wider column and the metadata sits beside it rather than above it.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { AttentionTag } from '../components/AttentionTag'
 import { DecisionLedger } from '../components/DecisionLedger'
 import { PriorityToken } from '../components/PriorityToken'
+import { getWorkOrder } from '../lib/api'
 import {
   categoryLabel,
   formatCountdown,
@@ -19,6 +20,8 @@ import type {
   IncidentDetail,
   IncidentStatus,
   IncidentSummary,
+  WorkOrder,
+  WorkOrderStatus,
 } from '../lib/types'
 
 interface DetailProps {
@@ -66,6 +69,112 @@ const NEXT_ACTIONS: Partial<Record<IncidentStatus, StatusAction[]>> = {
   on_hold: [RESOLVE],
   escalated: [RESOLVE],
   resolved: [{ label: 'Close', target: 'closed', requiresNote: false }],
+}
+
+const WORK_ORDER_STATUS_LABELS: Record<WorkOrderStatus, string> = {
+  pending: 'Pending',
+  acknowledged: 'Acknowledged',
+  in_progress: 'In progress',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+}
+
+/**
+ * The tickets dispatched for this incident.
+ *
+ * Read-only: Relay raises a work order, and the crew updates it in the system
+ * that owns the field work, so this reports rather than edits. Fetched per id
+ * because the incident carries ids only -- a screen that does not show them
+ * should not pay to load them.
+ */
+function WorkOrderCard({ incident }: { incident: IncidentSummary }) {
+  const [orders, setOrders] = useState<WorkOrder[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const ids = incident.work_order_ids
+  const key = ids.join(',')
+
+  useEffect(() => {
+    if (ids.length === 0) {
+      setOrders([])
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const loaded = await Promise.all(ids.map((id) => getWorkOrder(id)))
+        if (!cancelled) {
+          setOrders(loaded)
+          setError(null)
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setOrders([])
+          setError(
+            caught instanceof Error ? caught.message : 'Could not load work orders.',
+          )
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // Keyed on the joined ids so a re-render with the same tickets does not refetch.
+  }, [key])
+
+  return (
+    <div className="panel">
+      <div className="panel__head">
+        <h2 className="panel__title">Work orders</h2>
+        {orders !== null && orders.length > 0 && (
+          <span className="label">
+            {orders.length} {orders.length === 1 ? 'ticket' : 'tickets'}
+          </span>
+        )}
+      </div>
+
+      {orders === null ? (
+        <div className="empty">Loading…</div>
+      ) : orders.length === 0 ? (
+        <div className="empty">
+          <strong>No work order yet.</strong>
+          {error ??
+            'Relay raises one once the incident has a team. Incidents from before ' +
+              'dispatch recorded this link show nothing here.'}
+        </div>
+      ) : (
+        <div className="evidence">
+          {orders.map((order) => (
+            <div className="evidence__item" key={order.work_order_id}>
+              <div className="evidence__meta" style={{ marginBottom: '0.375rem' }}>
+                <span className="fact__value" style={{ marginTop: 0 }}>
+                  {order.ticket}
+                </span>
+                <span className="tag">{WORK_ORDER_STATUS_LABELS[order.status]}</span>
+              </div>
+              <div className="factgrid" style={{ padding: 0 }}>
+                <Fact label="Team" value={order.team_name ?? order.team_id} />
+                <Fact
+                  label="Due"
+                  value={
+                    order.due_at
+                      ? new Date(order.due_at).toLocaleString([], {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          hour12: false,
+                        })
+                      : '—'
+                  }
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 /**
@@ -283,6 +392,8 @@ export function DetailView({
           </div>
 
           <ActionsPanel incident={incident} onChangeStatus={onChangeStatus} />
+
+          <WorkOrderCard incident={incident} />
 
           <div className="panel">
             <div className="panel__head">

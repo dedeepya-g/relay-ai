@@ -137,8 +137,17 @@ def create_work_order(incident_id: str) -> dict[str, Any]:
         )
     )
 
+    # The work order already names its incident; this completes the link in the
+    # other direction. Without it an incident reports no work orders even while
+    # one is dispatched against it, and anything reading the incident -- a UI,
+    # or a later tool -- cannot find the ticket. Folded into the same write as
+    # the status flip so dispatch stays one update rather than two.
+    fields: dict[str, object] = {
+        "work_order_ids": list(dict.fromkeys([*incident.work_order_ids, work_order.id]))
+    }
     if incident.status is IncidentStatus.OPEN:
-        update_incident(incident_id, {"status": IncidentStatus.ASSIGNED.value})
+        fields["status"] = IncidentStatus.ASSIGNED.value
+    update_incident(incident_id, fields)
 
     return {
         "work_order_id": work_order.id,

@@ -15,6 +15,7 @@ import type {
   PendingReview,
   ReportIntakeResult,
   StatusUpdateResult,
+  WorkOrder,
 } from './types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
@@ -136,6 +137,11 @@ export function updateIncidentStatus(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ new_status: newStatus, notes: trimmed ? trimmed : null }),
   })
+}
+
+/** Fetch one dispatched work order by id. */
+export function getWorkOrder(workOrderId: string): Promise<WorkOrder> {
+  return request<WorkOrder>(`/work_orders/${workOrderId}`)
 }
 
 /** Run one pass of the overdue sweep, escalating anything past its deadline. */

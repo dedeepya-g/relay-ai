@@ -18,6 +18,7 @@ from models.common import (
     Priority,
     ReportStatus,
     RoomType,
+    WorkOrderStatus,
 )
 
 
@@ -107,6 +108,12 @@ class IncidentSummary(RelaySchema):
         "configuration so callers never have to map team ids themselves.",
     )
     report_count: int
+    work_order_ids: list[str] = Field(
+        default_factory=list,
+        description="Work orders dispatched for this incident, newest last. "
+        "Empty for incidents raised before dispatch recorded the link back "
+        "onto the incident.",
+    )
     escalation_level: int = Field(
         default=0,
         description="How many times the overdue sweep has raised this "
@@ -165,6 +172,28 @@ class IncidentDetail(RelaySchema):
     summary: str
     reports: list[LinkedReport]
     decisions: list[DecisionEntry]
+
+
+class WorkOrderSummary(RelaySchema):
+    """One dispatched work order, as an operator reads it.
+
+    Read-only: Relay raises work orders, and a crew updates them in the system
+    that owns the field work, so nothing here is editable from this API.
+    """
+
+    work_order_id: str
+    ticket: str
+    incident_id: str
+    team_id: str
+    team_name: str | None = Field(
+        default=None,
+        description="Display name of the owning team, resolved from the campus "
+        "configuration so callers never have to map team ids themselves.",
+    )
+    status: WorkOrderStatus
+    priority: Priority
+    due_at: datetime | None = None
+    created_at: datetime
 
 
 class StatusUpdateRequest(RelaySchema):

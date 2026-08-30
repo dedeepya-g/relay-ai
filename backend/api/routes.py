@@ -30,6 +30,7 @@ from api.schemas import (
     StatusUpdateRequest,
     StatusUpdateResponse,
     TeamOption,
+    WorkOrderSummary,
 )
 from agents.coordinator import coordinate
 from config import get_settings
@@ -41,6 +42,7 @@ from services.firestore_service import (
     get_campus_config,
     get_incident,
     get_report,
+    get_work_order,
     list_decisions_for_subject,
     list_open_incidents,
     list_reports_by_status,
@@ -88,6 +90,7 @@ def _summarize(incident: Incident, team_names: dict[str, str]) -> IncidentSummar
         assigned_team_id=incident.assigned_team_id,
         assigned_team_name=team_names.get(incident.assigned_team_id or ""),
         report_count=len(incident.report_ids),
+        work_order_ids=incident.work_order_ids,
         escalation_level=incident.escalation_level,
         sla_due_at=incident.sla_due_at,
         created_at=incident.created_at,
@@ -410,6 +413,38 @@ async def resolve_report_review(
         outcome=result["outcome"],
         incident_id=result["incident_id"],
         resolved_by=result["resolved_by"],
+    )
+
+
+@router.get(
+    "/work_orders/{work_order_id}",
+    response_model=WorkOrderSummary,
+    tags=["work orders"],
+)
+async def get_work_order_detail(work_order_id: str) -> WorkOrderSummary:
+    """Return one dispatched work order.
+
+    Fetched by id rather than embedded in the incident payload: an incident
+    carries its work order ids, and a caller that does not display them should
+    not pay to load them.
+    """
+    work_order = get_work_order(work_order_id)
+    if work_order is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No work order {work_order_id!r}.",
+        )
+
+    return WorkOrderSummary(
+        work_order_id=work_order.id,
+        ticket=work_order.ticket,
+        incident_id=work_order.incident_id,
+        team_id=work_order.team_id,
+        team_name=_team_names().get(work_order.team_id),
+        status=work_order.status,
+        priority=work_order.priority,
+        due_at=work_order.due_at,
+        created_at=work_order.created_at,
     )
 
 

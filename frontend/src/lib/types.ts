@@ -60,6 +60,8 @@ export interface IncidentSummary {
   assigned_team_id: string | null
   assigned_team_name: string | null
   report_count: number
+  /** Work orders dispatched for this incident; empty for older incidents. */
+  work_order_ids: string[]
   sla_due_at: string | null
   created_at: string
   updated_at: string
@@ -100,6 +102,25 @@ export interface IncidentDetail {
   summary: string
   reports: LinkedReport[]
   decisions: DecisionEntry[]
+}
+
+export type WorkOrderStatus =
+  | 'pending'
+  | 'acknowledged'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled'
+
+export interface WorkOrder {
+  work_order_id: string
+  ticket: string
+  incident_id: string
+  team_id: string
+  team_name: string | null
+  status: WorkOrderStatus
+  priority: Priority
+  due_at: string | null
+  created_at: string
 }
 
 export interface EscalationEntry {
