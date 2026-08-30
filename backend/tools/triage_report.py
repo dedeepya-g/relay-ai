@@ -16,12 +16,19 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from config import get_settings
 from models.campus_config import CampusConfig
-from models.common import IssueCategory
+from models.common import DecisionActor, DecisionType, IssueCategory
 from models.common import ReportStatus, utc_now
+from models.decision import Decision
 from models.report import Report
 from models.triage import TriageResult
-from services.firestore_service import get_campus_config, get_report, update_report
+from services.firestore_service import (
+    get_campus_config,
+    get_report,
+    record_decision,
+    update_report,
+)
 from services.gemini_service import GeminiError, generate_structured
 
 logger = logging.getLogger(__name__)
@@ -239,6 +246,74 @@ def analyze_report(
     return result
 
 
+def _summarize_classification(result: TriageResult) -> str:
+    """One line naming what the model concluded, for the decision's outcome.
+
+    Reports the urgency the model actually observed rather than a priority:
+    priority is campus policy applied downstream, and conflating the two here
+    would put a judgment this step did not make into the audit trail.
+    """
+    if result.is_potential_emergency:
+        urgency = "potential emergency"
+    elif result.severity_signals:
+        count = len(result.severity_signals)
+        urgency = f"{count} urgency signal{'s' if count != 1 else ''}"
+    else:
+        urgency = "no urgency signals"
+    return f"classified as {result.issue_type.value}, {urgency}"
+
+
+def _describe_detection(result: TriageResult) -> str:
+    """Fallback rationale when the model returned no note of its own.
+
+    `confidence_note` defaults to empty, and an empty rationale would leave the
+    ledger showing a decision with no stated reason. This says what was
+    detected instead, so the entry is still answerable.
+    """
+    parts = [f"Classified as {result.issue_type.value} from the report text."]
+    if result.severity_signals:
+        signals = "; ".join(result.severity_signals)
+        parts.append(f"Urgency signals detected: {signals}.")
+    else:
+        parts.append("No urgency signals were detected.")
+    if result.is_potential_emergency:
+        parts.append("The report describes conditions posing danger.")
+    if result.missing_fields:
+        missing = ", ".join(field.value for field in result.missing_fields)
+        parts.append(f"The reporter did not give: {missing}.")
+    return " ".join(parts)
+
+
+def _record_triage_decision(report: Report, result: TriageResult) -> None:
+    """Append this classification to the audit trail.
+
+    Recorded for every report, not only uncertain ones. "Why was this called
+    plumbing?" is asked of routine classifications as often as doubtful ones,
+    and without an entry here the trail begins at deduplication, with the
+    category it depends on already assumed.
+    """
+    record_decision(
+        Decision(
+            campus_id=report.campus_id,
+            decision_type=DecisionType.TRIAGE,
+            decided_by=DecisionActor.MODEL,
+            subject_type="reports",
+            subject_id=report.id,
+            outcome=_summarize_classification(result),
+            rationale=result.confidence_note or _describe_detection(result),
+            tool_name="triage_report",
+            model=get_settings().gemini_model,
+            inputs={
+                "description": report.description,
+                "building_id": report.location.building_id,
+                "floor": report.location.floor,
+                "room": report.location.room,
+                "had_photo": report.photo_uri is not None,
+            },
+        )
+    )
+
+
 def triage_report(report_id: str) -> dict[str, Any]:
     """Read a facility report and extract what it is actually about.
 
@@ -275,6 +350,10 @@ def triage_report(report_id: str) -> dict[str, Any]:
             "triaged_at": utc_now(),
         },
     )
+    # After the report is stored triaged, so the decision never describes a
+    # classification that failed to persist, and before deduplication runs, so
+    # the trail reads in the order the pipeline actually decided things.
+    _record_triage_decision(report, result)
 
     return {
         "report_id": report_id,
