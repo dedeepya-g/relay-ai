@@ -9,8 +9,13 @@ from __future__ import annotations
 
 import logging
 import mimetypes
+import uuid
+from datetime import timedelta
 
+import google.auth
+import google.auth.transport.requests
 from google.api_core import exceptions as gcloud_exceptions
+from google.auth import impersonated_credentials
 
 from config import get_settings, get_storage_bucket
 
@@ -48,7 +53,25 @@ def upload_report_photo(
         PhotoRejectedError: If the content type is unsupported or the payload
             exceeds :data:`MAX_PHOTO_BYTES`.
     """
-    raise NotImplementedError
+    if content_type not in ALLOWED_CONTENT_TYPES:
+        raise PhotoRejectedError(
+            f"Unsupported content type {content_type!r}; expected one of "
+            f"{sorted(ALLOWED_CONTENT_TYPES)}."
+        )
+    if len(data) > MAX_PHOTO_BYTES:
+        raise PhotoRejectedError(
+            f"Photo is {len(data)} bytes, over the {MAX_PHOTO_BYTES} byte limit."
+        )
+
+    extension = mimetypes.guess_extension(content_type) or ".jpg"
+    object_name = f"{PHOTO_PREFIX}/{report_id}/{uuid.uuid4().hex}{extension}"
+
+    blob = get_storage_bucket().blob(object_name)
+    blob.upload_from_string(data, content_type=content_type)
+
+    gcs_uri = f"gs://{get_settings().storage_bucket}/{object_name}"
+    logger.info("Stored photo for report %s at %s", report_id, gcs_uri)
+    return gcs_uri
 
 
 def generate_signed_url(gcs_uri: str, ttl_seconds: int | None = None) -> str:
@@ -62,7 +85,44 @@ def generate_signed_url(gcs_uri: str, ttl_seconds: int | None = None) -> str:
         ValueError: If ``gcs_uri`` is not a ``gs://`` URI in the configured
             bucket.
     """
-    raise NotImplementedError
+    object_name = _parse_gcs_uri(gcs_uri)
+    blob = get_storage_bucket().blob(object_name)
+    ttl = ttl_seconds if ttl_seconds is not None else get_settings().signed_url_ttl_seconds
+
+    try:
+        return blob.generate_signed_url(
+            version="v4", expiration=timedelta(seconds=ttl), method="GET"
+        )
+    except AttributeError:
+        # The runtime's own credentials (Cloud Run's attached service account,
+        # or any metadata-server credential) carry no private key to sign
+        # with directly. Self-impersonating through the IAM Credentials API
+        # signs on its behalf instead -- it only works if that identity holds
+        # Service Account Token Creator on itself, and re-raises otherwise so
+        # a genuinely unsigned environment (e.g. local user credentials) fails
+        # the same way it always did.
+        source_credentials, _ = google.auth.default()
+        # `service_account_email` reads back the literal string "default"
+        # until the credentials have actually talked to the metadata server
+        # once; refreshing first is what makes the real address available.
+        source_credentials.refresh(google.auth.transport.requests.Request())
+        service_account_email = getattr(
+            source_credentials, "service_account_email", None
+        )
+        if not service_account_email or service_account_email == "default":
+            raise
+        signing_credentials = impersonated_credentials.Credentials(
+            source_credentials=source_credentials,
+            target_principal=service_account_email,
+            target_scopes=["https://www.googleapis.com/auth/devstorage.read_only"],
+            lifetime=min(ttl, 3600),
+        )
+        return blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(seconds=ttl),
+            method="GET",
+            credentials=signing_credentials,
+        )
 
 
 def _parse_gcs_uri(gcs_uri: str) -> str:
@@ -129,4 +189,9 @@ def download_photo(gcs_uri: str) -> tuple[bytes, str]:
 
 def delete_photo(gcs_uri: str) -> None:
     """Delete a stored photo, ignoring objects that are already gone."""
-    raise NotImplementedError
+    object_name = _parse_gcs_uri(gcs_uri)
+    blob = get_storage_bucket().blob(object_name)
+    try:
+        blob.delete()
+    except gcloud_exceptions.NotFound:
+        pass

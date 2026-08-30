@@ -84,9 +84,8 @@ class ReportIntakeResponse(RelaySchema):
     )
     photo_stored: bool = Field(
         default=False,
-        description="Whether it was persisted. Always false for now: photo "
-        "storage is not implemented, so an uploaded photo is acknowledged and "
-        "discarded rather than silently appearing to have been kept.",
+        description="Whether the uploaded photo was validated and persisted "
+        "to Cloud Storage. False if no photo was attached.",
     )
 
 
@@ -141,6 +140,12 @@ class LinkedReport(RelaySchema):
     room: str | None = None
     is_potential_emergency: bool = False
     severity_signals: list[str] = Field(default_factory=list)
+    photo_url: str | None = Field(
+        default=None,
+        description="Short-lived signed URL for the attached photo, if one "
+        "was stored. Omitted rather than failing the whole response when "
+        "signing is unavailable.",
+    )
     submitted_at: datetime
 
 
