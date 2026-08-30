@@ -14,6 +14,12 @@ import type { Campus, ReportIntakeResult } from '../lib/types'
 
 interface IntakeProps {
   campus: Campus | null
+  /**
+   * Why the campus layout is missing, when it is. Without it there are no
+   * buildings to choose from, and an empty dropdown with nothing beside it
+   * reads as a campus with no buildings rather than as a failure to load.
+   */
+  campusError: string | null
   submitting: boolean
   result: ReportIntakeResult | null
   error: string | null
@@ -36,6 +42,7 @@ const OUTCOME_HEADLINE: Record<string, string> = {
 
 export function IntakeView({
   campus,
+  campusError,
   submitting,
   result,
   error,
@@ -142,6 +149,16 @@ export function IntakeView({
         })
       }}
     >
+      {/* Shown above the fields rather than beside the building select: it
+          explains why every location choice below is empty, not just one. */}
+      {campusError && (
+        <p className="notice">
+          <strong>Relay could not load the campus layout.</strong> Buildings,
+          floors, and rooms are unavailable, so a report cannot be placed yet.{' '}
+          {campusError}
+        </p>
+      )}
+
       <div className="field">
         <label className="label" htmlFor="description">
           What is wrong?
@@ -247,13 +264,20 @@ export function IntakeView({
       {error && <p className="notice">{error}</p>}
 
       <div>
+        {/* A report with no building cannot be deduplicated or routed, so the
+            form refuses rather than sending one the pipeline will reject. */}
         <button
           type="submit"
           className="btn btn--primary"
-          disabled={submitting || description.trim().length === 0}
+          disabled={submitting || description.trim().length === 0 || !buildingId}
         >
           {submitting ? 'Reading your report…' : 'Send report'}
         </button>
+        {!buildingId && (
+          <p className="hint" style={{ marginTop: '0.5rem' }}>
+            Waiting on the campus layout before a report can be sent.
+          </p>
+        )}
       </div>
     </form>
   )
