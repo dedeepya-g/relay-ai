@@ -47,6 +47,12 @@ from services.firestore_service import (
     list_open_incidents,
     list_reports_by_status,
     list_reports_for_incident,
+    update_report,
+)
+from services.storage_service import (
+    PhotoRejectedError,
+    generate_signed_url,
+    upload_report_photo,
 )
 from tools.assign_priority import assign_priority
 from tools.create_work_order import create_work_order
@@ -74,6 +80,27 @@ def _team_names() -> dict[str, str]:
     """
     config = get_campus_config(get_settings().campus_id)
     return {team.id: team.name for team in config.teams} if config else {}
+
+
+def _photo_url(report: Report) -> str | None:
+    """Return a signed URL for a report's photo, or ``None`` if unavailable.
+
+    Signing can fail for reasons unrelated to whether the photo exists --
+    local credentials without a private key, a transient IAM error -- and none
+    of those should take down the whole incident view over one report's photo.
+    """
+    if report.photo_uri is None:
+        return None
+    try:
+        return generate_signed_url(report.photo_uri)
+    except Exception:  # noqa: BLE001 - signing failure degrades to no photo
+        logger.warning(
+            "Could not sign URL for photo %s on report %s",
+            report.photo_uri,
+            report.id,
+            exc_info=True,
+        )
+        return None
 
 
 def _summarize(incident: Incident, team_names: dict[str, str]) -> IncidentSummary:
@@ -122,8 +149,8 @@ async def submit_report(
     would imply a decision Relay declined to make.
 
     Fields arrive as form data so that a photo can be attached to the same
-    request. A photo is accepted and acknowledged but not stored, since photo
-    storage is not implemented yet.
+    request. A photo is stored before triage runs, so its ``gs://`` URI is on
+    the report by the time triage reads it for multimodal analysis.
     """
     report = create_report(
         Report(
@@ -135,6 +162,23 @@ async def submit_report(
             reporter_email=reporter_email,
         )
     )
+
+    photo_stored = False
+    if photo is not None:
+        data = await photo.read()
+        try:
+            gcs_uri = upload_report_photo(
+                report.id,
+                data,
+                content_type=photo.content_type or "application/octet-stream",
+                filename=photo.filename,
+            )
+        except PhotoRejectedError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+            ) from None
+        report = update_report(report.id, {"photo_uri": gcs_uri})
+        photo_stored = True
 
     triage = triage_report(report.id)
     if "error" in triage:
@@ -164,7 +208,7 @@ async def submit_report(
             "deduplication": dedup["reasoning"],
         },
         photo_received=photo is not None,
-        photo_stored=False,
+        photo_stored=photo_stored,
     )
 
     incident_id = dedup.get("incident_id")
@@ -283,6 +327,7 @@ async def get_incident_detail(incident_id: str) -> IncidentDetail:
                 severity_signals=report.triage.severity_signals
                 if report.triage
                 else [],
+                photo_url=_photo_url(report),
                 submitted_at=report.submitted_at,
             )
             for report in reports
