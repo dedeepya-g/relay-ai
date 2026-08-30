@@ -14,35 +14,48 @@
  */
 
 :root {
-  /* Field and structure. */
-  --ground: #edf0f4;
-  --paper: #ffffff;
-  --ink: #172029;
-  --slate: #5b6675;
-  --rule: #d2d8e0;
-  --signal: #1f5c8b;
+  /* Brand. Teal carries every interactive affordance; meadow is an accent
+     fill and never text -- at 1.09:1 on paper it is invisible as a
+     foreground, and only reaches usable contrast against the deep teal. */
+  --teal-deep: #204654;
+  --teal-hover: #16323c;
+  --meadow: #caffa6;
+
+  /* Field and structure. `--paper` is the page; `--surface` is what sits on
+     it. Two tokens rather than one because nothing casts a shadow here, so
+     the only thing separating a panel from the page is this contrast. */
+  --paper: #f7faf3;
+  --surface: #ffffff;
+  --ink: #132229;
+  --slate: #5c7079;
+  --rule: #d8e5da;
 
   /* Priority ramp. Functional, never decorative: each is paired with a text
-     label and a distinct token shape so colour is never the only carrier. */
+     label and a distinct token shape so colour is never the only carrier.
+     `--low` is darkened from the brand sheet's #7a8b85, which measured
+     3.4:1 on paper and failed AA for the 11px labels it renders. */
   --critical: #a4161a;
   --high: #a85b00;
-  --medium: #1f5c8b;
-  --low: #6b7684;
+  --medium: #3d6b75;
+  --low: #667872;
 
   /* Tints, used only for the faintest banding. */
   --critical-tint: #fbeeee;
-  --signal-tint: #eef4f9;
+  --teal-tint: #e8f0f1;
   --warn-tint: #fdf4e8;
+  --meadow-tint: #edffe0;
 
   --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-wordmark: 'Alfa Slab One', Rockwell, Georgia, serif;
 
   --gap: 1rem;
   --radius: 3px;
 
   font-family: var(--font-sans);
   color: var(--ink);
-  background-color: var(--ground);
+  background-color: var(--paper);
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -100,7 +113,7 @@ p {
 }
 
 :where(a, button, input, textarea, select, [tabindex]):focus-visible {
-  outline: 2px solid var(--signal);
+  outline: 2px solid var(--teal-deep);
   outline-offset: 2px;
   border-radius: 2px;
 }
@@ -116,7 +129,7 @@ p {
   gap: 1.25rem;
   padding: 0 1.25rem;
   height: 3.25rem;
-  background: var(--paper);
+  background: var(--surface);
   border-bottom: 1px solid var(--rule);
 }
 
@@ -124,7 +137,9 @@ p {
   display: flex;
   align-items: baseline;
   gap: 0.625rem;
-  min-width: 0;
+  /* Never gives ground: the wordmark is the smallest thing here and the
+     first thing a reader orients by. */
+  flex: 0 0 auto;
 }
 
 .statusbar__mark {
@@ -141,10 +156,16 @@ p {
   text-overflow: ellipsis;
 }
 
+/* The counters absorb the squeeze. They are the only part of the bar that can
+   lose space without losing a destination, so they shrink before navigation
+   does and the button can never be pushed off the edge. */
 .statusbar__counts {
   display: flex;
   gap: 1.25rem;
   margin-left: auto;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
 }
 
 .count {
@@ -166,7 +187,10 @@ p {
 
 .statusbar__nav {
   display: flex;
+  align-items: center;
   gap: 0.25rem;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 /* --- Buttons -------------------------------------------------------------- */
@@ -178,7 +202,7 @@ p {
   padding: 0.4375rem 0.875rem;
   border-radius: var(--radius);
   border: 1px solid var(--rule);
-  background: var(--paper);
+  background: var(--surface);
   color: var(--ink);
   cursor: pointer;
 }
@@ -193,14 +217,14 @@ p {
 }
 
 .btn--primary {
-  background: var(--signal);
-  border-color: var(--signal);
-  color: var(--paper);
+  background: var(--teal-deep);
+  border-color: var(--teal-deep);
+  color: var(--surface);
 }
 
 .btn--primary:hover:not(:disabled) {
-  background: #17496e;
-  border-color: #17496e;
+  background: var(--teal-hover);
+  border-color: var(--teal-hover);
 }
 
 .btn--ghost {
@@ -209,9 +233,9 @@ p {
   color: var(--slate);
 }
 
-.btn--ghost[aria-current='true'] {
+.btn--ghost[aria-current] {
   color: var(--ink);
-  background: var(--ground);
+  background: var(--paper);
 }
 
 .btn--sm {
@@ -288,8 +312,8 @@ p {
 }
 
 .tag--review {
-  color: var(--signal);
-  background: var(--signal-tint);
+  color: var(--teal-deep);
+  background: var(--teal-tint);
 }
 .tag--overdue {
   color: var(--critical);
@@ -300,8 +324,15 @@ p {
   background: var(--warn-tint);
 }
 /* The one filled tag: escalation is the only state the board shouts about. */
+.tag--resolved,
+.tag--closed {
+  color: var(--slate);
+  border-color: var(--rule);
+  background: var(--surface);
+}
+
 .tag--escalated {
-  color: var(--paper);
+  color: var(--surface);
   background: var(--critical);
   border-color: var(--critical);
 }
@@ -309,7 +340,7 @@ p {
 /* --- Panels and rows ------------------------------------------------------ */
 
 .panel {
-  background: var(--paper);
+  background: var(--surface);
   border: 1px solid var(--rule);
   border-radius: var(--radius);
 }
@@ -350,7 +381,7 @@ p {
   padding: 0.8125rem 1rem;
   border: 0;
   border-top: 1px solid var(--rule);
-  background: var(--paper);
+  background: var(--surface);
   text-align: left;
   font: inherit;
   color: inherit;
@@ -362,7 +393,7 @@ p {
 }
 
 .row:hover {
-  background: var(--ground);
+  background: var(--paper);
 }
 
 /* Flags stack so a row can carry both why it needs attention and how bad it
@@ -428,7 +459,7 @@ p {
 
 .review {
   border-top: 1px solid var(--rule);
-  background: var(--paper);
+  background: var(--surface);
 }
 
 .review:first-of-type {
@@ -451,7 +482,7 @@ p {
 }
 
 .review__head:hover {
-  background: var(--ground);
+  background: var(--paper);
 }
 
 /* Indented to clear the flag column, so the body lines up under the report
@@ -481,7 +512,7 @@ p {
   padding: 0.375rem 0.5rem;
   border: 1px solid var(--rule);
   border-radius: var(--radius);
-  background: var(--paper);
+  background: var(--surface);
   color: var(--ink);
   max-width: 22rem;
 }
@@ -515,7 +546,7 @@ p {
   width: 13px;
   height: 13px;
   border-radius: 50%;
-  background: var(--paper);
+  background: var(--surface);
   border: 2px solid var(--slate);
 }
 
@@ -545,8 +576,8 @@ p {
   top: 0.9375rem;
   width: 7px;
   height: 7px;
-  border: 1.5px solid var(--signal);
-  background: var(--paper);
+  border: 1.5px solid var(--teal-deep);
+  background: var(--surface);
 }
 
 .entry--rule::before {
@@ -558,14 +589,14 @@ p {
 }
 
 .entry--agent::before {
-  background: var(--signal);
+  background: var(--teal-deep);
 }
 
 .entry--human {
   margin-left: -0.5rem;
   padding-left: 1.625rem;
   border-left: 3px solid var(--ink);
-  background: var(--ground);
+  background: var(--paper);
   border-radius: 0 var(--radius) var(--radius) 0;
 }
 
@@ -604,9 +635,9 @@ p {
 }
 
 .entry__by--model {
-  color: var(--signal);
-  border-color: var(--signal);
-  background: var(--signal-tint);
+  color: var(--teal-deep);
+  border-color: var(--teal-deep);
+  background: var(--teal-tint);
 }
 
 .entry__by--rule {
@@ -614,13 +645,13 @@ p {
 }
 
 .entry__by--agent {
-  color: var(--paper);
-  background: var(--signal);
-  border-color: var(--signal);
+  color: var(--surface);
+  background: var(--teal-deep);
+  border-color: var(--teal-deep);
 }
 
 .entry__by--human {
-  color: var(--paper);
+  color: var(--surface);
   background: var(--ink);
   border-color: var(--ink);
 }
@@ -723,7 +754,7 @@ p {
   padding: 0.5rem 0.625rem;
   border: 1px solid var(--rule);
   border-radius: var(--radius);
-  background: var(--paper);
+  background: var(--surface);
   color: var(--ink);
   width: 100%;
 }
@@ -767,20 +798,20 @@ p {
   border: 1px solid var(--rule);
   border-left: 3px solid var(--critical);
   border-radius: var(--radius);
-  background: var(--paper);
+  background: var(--surface);
   font-size: 0.875rem;
 }
 
 .notice code {
   font-family: var(--font-mono);
   font-size: 0.8125rem;
-  background: var(--ground);
+  background: var(--paper);
   padding: 0.0625rem 0.25rem;
   border-radius: 2px;
 }
 
 .notice--ok {
-  border-left-color: var(--signal);
+  border-left-color: var(--teal-deep);
 }
 
 /* --- Motion: one considered entrance, nothing else ------------------------ */
@@ -815,6 +846,26 @@ p {
 @media (max-width: 60rem) {
   .detail__grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 58rem) {
+  .statusbar {
+    height: auto;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    padding: 0.625rem 1rem;
+  }
+
+  .statusbar__counts {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+    gap: 1rem;
+  }
+
+  .statusbar__nav {
+    margin-left: auto;
   }
 }
 
@@ -881,16 +932,614 @@ p {
     padding-left: 1rem;
   }
 
-  .statusbar {
-    height: auto;
-    flex-wrap: wrap;
-    gap: 0.5rem 1rem;
-    padding: 0.625rem 1rem;
-  }
+}
 
-  .statusbar__counts {
-    width: 100%;
-    margin-left: 0;
-    gap: 1rem;
+/* --- Public shell ---------------------------------------------------------
+ * The marketing side. The display serif is scoped here and never reaches the
+ * ops board, where a second voice would compete with the data.
+ */
+
+.marketing .display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.publicbar {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0 1.25rem;
+  height: 3.5rem;
+  background: var(--teal-deep);
+  color: var(--paper);
+}
+
+.publicbar__mark {
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--paper);
+  text-decoration: none;
+}
+
+.publicbar__nav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-left: auto;
+}
+
+.publicbar__link {
+  font-size: 0.875rem;
+  color: var(--paper);
+  text-decoration: none;
+  opacity: 0.85;
+}
+
+.publicbar__link:hover,
+.publicbar__link[aria-current] {
+  opacity: 1;
+  text-decoration: underline;
+  text-underline-offset: 0.25rem;
+}
+
+/* On the teal bar the primary button inverts: meadow is only legible as a
+   fill, and against deep teal it reaches 8.9:1. */
+.publicbar .btn--primary {
+  background: var(--meadow);
+  border-color: var(--meadow);
+  color: var(--teal-deep);
+}
+
+.publicbar .btn--primary:hover:not(:disabled) {
+  background: #b6f087;
+  border-color: #b6f087;
+}
+
+/* Links styled as buttons need the anchor reset the class assumes. */
+a.btn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.statusbar__mark {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* --- Landing --------------------------------------------------------------
+ * The one page with a voice. Same rules still apply: nothing casts a shadow,
+ * structured facts stay in mono, and the display serif appears only here.
+ */
+
+.btn--lg {
+  font-size: 0.9375rem;
+  padding: 0.6875rem 1.25rem;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 3rem;
+  align-items: center;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 4.5rem 1.25rem 5rem;
+}
+
+.hero__title {
+  font-size: clamp(2.75rem, 5.5vw, 4rem);
+  line-height: 1.02;
+  color: var(--teal-deep);
+  max-width: 12ch;
+}
+
+.hero__sub {
+  margin-top: 1.5rem;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: var(--slate);
+  max-width: 46ch;
+}
+
+.hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+.hero__aside {
+  margin-top: 0.875rem;
+  font-size: 0.8125rem;
+  color: var(--slate);
+}
+
+/* --- Convergence ----------------------------------------------------------
+ * Reports sort into the incidents they belong to. `left`/`top` are animated
+ * rather than `transform`, because a percentage there resolves against the
+ * stage rather than the bubble's own box -- which is the coordinate space the
+ * targets are expressed in. Seven elements; the cost is not worth the
+ * arithmetic of doing it any other way.
+ */
+
+.converge {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1.02;
+  min-height: 26rem;
+}
+
+.converge__web {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.converge__thread {
+  stroke: var(--rule);
+  stroke-width: 0.3;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 120;
+  stroke-dashoffset: 120;
+  animation: thread 11s ease-in-out infinite;
+}
+
+.bubble {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  max-width: 14rem;
+  padding: 0.4375rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: sort 11s ease-in-out infinite both;
+}
+
+@keyframes sort {
+  0%, 3% { opacity: 0; transform: scale(0.94); }
+  10%, 40% { opacity: 1; transform: scale(1); left: var(--x); top: var(--y); }
+  62% { opacity: 0; transform: scale(0.55); left: var(--cx); top: var(--cy); }
+  100% { opacity: 0; transform: scale(0.55); left: var(--cx); top: var(--cy); }
+}
+
+@keyframes thread {
+  0%, 26% { stroke-dashoffset: 120; opacity: 0; }
+  40% { opacity: 0.9; }
+  60%, 88% { stroke-dashoffset: 0; opacity: 0.9; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+.converge__card {
+  position: absolute;
+  right: 0;
+  width: min(19rem, 74%);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.875rem;
+  animation: land 11s ease-out infinite both;
+}
+
+.converge__card--critical { border-left: 3px solid var(--critical); }
+.converge__card--high { border-left: 3px solid var(--high); }
+.converge__card--medium { border-left: 3px solid var(--medium); }
+
+@keyframes land {
+  0%, 52% { opacity: 0; transform: translateY(6px) scale(0.98); }
+  66% { opacity: 1; transform: none; }
+  90% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: none; }
+}
+
+.converge__cardhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.4375rem;
+}
+
+.converge__cardtitle {
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.converge__cardfoot {
+  display: flex;
+  gap: 0.875rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--rule);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--slate);
+}
+
+/* --- Problem band --------------------------------------------------------- */
+
+.band {
+  background: var(--teal-deep);
+  color: var(--paper);
+  padding: 4.5rem 1.25rem;
+}
+
+.band__inner {
+  max-width: 60rem;
+  margin: 0 auto;
+}
+
+.band__title {
+  font-size: clamp(1.75rem, 3vw, 2.375rem);
+  color: inherit;
+}
+
+.problem {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 2rem;
+  margin-top: 2rem;
+}
+
+.problem__head {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  padding-bottom: 0.625rem;
+  border-bottom: 1px solid rgba(247, 250, 243, 0.28);
+}
+
+.problem__body {
+  margin-top: 0.875rem;
+  line-height: 1.65;
+  color: rgba(247, 250, 243, 0.82);
+}
+
+.band__foot {
+  margin-top: 2.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(247, 250, 243, 0.28);
+  font-size: 1.0625rem;
+  color: var(--meadow);
+  max-width: 52ch;
+}
+
+/* --- Stages --------------------------------------------------------------- */
+
+.stages {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 4.5rem 1.25rem;
+}
+
+.stages__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 2.5rem;
+  align-items: start;
+}
+
+.stages__lede {
+  color: var(--slate);
+  line-height: 1.65;
+  max-width: 58ch;
+}
+
+.stagegrid {
+  display: grid;
+  /* Fixed three-up rather than auto-fit: six stages divide evenly into two
+     rows, where auto-fit leaves a hole at four across. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 2.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--rule);
+  border-left: 1px solid var(--rule);
+}
+
+.stage {
+  padding: 1.25rem;
+  border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  background: var(--surface);
+}
+
+.stage__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.stage__n {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--slate);
+}
+
+.stage__by {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.125rem 0.4375rem;
+  border-radius: 2px;
+  border: 1px solid var(--rule);
+  color: var(--slate);
+}
+
+.stage__by--model {
+  color: var(--teal-deep);
+  border-color: var(--teal-deep);
+  background: var(--teal-tint);
+}
+
+.stage__name {
+  margin-top: 0.875rem;
+  font-size: 1.0625rem;
+}
+
+.stage__text {
+  margin-top: 0.4375rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--slate);
+}
+
+/* --- Closer --------------------------------------------------------------- */
+
+.closer {
+  padding: 0 1.25rem 4.5rem;
+}
+
+.closer__inner {
+  max-width: 72rem;
+  margin: 0 auto;
+}
+
+.closer__title {
+  font-size: clamp(1.75rem, 3vw, 2.375rem);
+  color: var(--teal-deep);
+}
+
+.closer__actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.closer__card {
+  display: block;
+  padding: 1.5rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.closer__card:hover {
+  border-color: var(--teal-deep);
+}
+
+.closer__card--primary {
+  background: var(--meadow-tint);
+  border-color: var(--meadow);
+}
+
+.closer__cardtitle {
+  display: block;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--teal-deep);
+}
+
+.closer__cardtext {
+  display: block;
+  margin-top: 0.4375rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--slate);
+}
+
+/* --- Footer --------------------------------------------------------------- */
+
+.sitefoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 3rem;
+  border-top: 1px solid var(--rule);
+  font-weight: 600;
+  color: var(--teal-deep);
+}
+
+.sitefoot__note {
+  font-weight: 400;
+  font-size: 0.8125rem;
+  color: var(--slate);
+}
+
+@media (max-width: 60rem) {
+  .hero,
+  .stages__head {
+    grid-template-columns: minmax(0, 1fr);
   }
+  .stagegrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .hero__visual {
+    order: -1;
+  }
+}
+
+/* Reduced motion: every element holds its resolved state. The reports sit
+   where they started and the incident is simply present, which is the same
+   statement without the movement. */
+@media (prefers-reduced-motion: reduce) {
+  .bubble,
+  .converge__card,
+  .converge__thread {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+    stroke-dashoffset: 0;
+  }
+  .bubble {
+    opacity: 0.45;
+  }
+}
+
+@media (max-width: 40rem) {
+  .stagegrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Room chips on the campus page: an identifier and its name, the id in mono
+   because it is the part someone types into a report. */
+.roomchip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  padding: 0.1875rem 0.5rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--paper);
+  font-size: 0.8125rem;
+  color: var(--slate);
+}
+
+.roomchip__n {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* --- Wordmark -------------------------------------------------------------
+ * Alfa Slab One, for the product name and nothing else.
+ *
+ * Scoped to this class rather than to any element or heading so it cannot
+ * reach a section title, a label, or a value on the board. It is a logotype,
+ * not a typeface for the site: Fraunces still carries every headline, and the
+ * ops dashboard's data stays in Plex.
+ *
+ * The face ships in a single heavy weight, so `font-weight` is pinned to 400
+ * to stop a synthesised bold, and the tracking the marks previously used is
+ * reset -- negative tracking closes up a slab's serifs.
+ */
+.wordmark {
+  font-family: var(--font-wordmark);
+  font-weight: 400;
+  letter-spacing: 0.005em;
+}
+
+/* Sized down slightly against the sans it replaces: at equal size a slab this
+   heavy reads considerably larger. */
+.publicbar__mark.wordmark {
+  font-size: 1.0625rem;
+}
+
+.statusbar__mark.wordmark {
+  font-size: 1rem;
+  color: var(--teal-deep);
+}
+
+.sitefoot .wordmark {
+  font-size: 1.0625rem;
+}
+
+/* --- Counter filters ------------------------------------------------------
+ * The counters double as the board's filters. Active state uses meadow, the
+ * accent reserved for "this is on" -- it is a fill, and the teal text over it
+ * is the only pairing that reaches usable contrast.
+ */
+
+.count--link {
+  padding: 0.25rem 0.5rem;
+  margin: -0.25rem -0.125rem;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.count--link:hover {
+  background: var(--paper);
+  border-color: var(--rule);
+}
+
+.count--on,
+.count--on:hover {
+  background: var(--meadow);
+  border-color: var(--meadow);
+}
+
+.count--on .label,
+.count--on .count__value {
+  color: var(--teal-deep);
+}
+
+/* --- List controls --------------------------------------------------------- */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 2rem 0 0.25rem;
+}
+
+.controls__search {
+  flex: 1 1 18rem;
+  max-width: 28rem;
+}
+
+.controls__sort {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.controls__count {
+  margin-left: auto;
+}
+
+.filterbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.75rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--meadow);
+  border-radius: var(--radius);
+  background: var(--meadow-tint);
+  font-size: 0.875rem;
+}
+
+/* Anchored sections clear the top of the viewport by a little. */
+[id] {
+  scroll-margin-top: 1.5rem;
 }

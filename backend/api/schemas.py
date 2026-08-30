@@ -120,6 +120,14 @@ class IncidentSummary(RelaySchema):
         "incident; 0 means never escalated.",
     )
     sla_due_at: datetime | None = None
+    resolved_at: datetime | None = Field(
+        default=None,
+        description="When the incident was resolved; null while it is live.",
+    )
+    closed_at: datetime | None = Field(
+        default=None,
+        description="When the incident was closed; null until it is.",
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -282,6 +290,22 @@ class TeamOption(RelaySchema):
     coverage_hours: str
 
 
+class EscalationPolicyResponse(RelaySchema):
+    """How this campus reacts when an incident misses its deadline."""
+
+    grace_period_minutes: int = Field(
+        description="Slack after the deadline before the first escalation."
+    )
+    repeat_interval_minutes: int = Field(
+        description="Interval between successive escalations while still overdue."
+    )
+    max_level: int = Field(description="Level at which Relay stops raising.")
+    notify_on_escalation: list[str] = Field(
+        default_factory=list,
+        description="Addresses notified at every escalation level.",
+    )
+
+
 class CampusResponse(RelaySchema):
     """Reference data a client needs to submit a report and label a queue.
 
@@ -296,6 +320,7 @@ class CampusResponse(RelaySchema):
     buildings: list[BuildingOption]
     teams: list[TeamOption]
     sla_minutes: dict[Priority, int]
+    escalation_policy: EscalationPolicyResponse
 
 
 class PendingReview(RelaySchema):

@@ -88,8 +88,17 @@ export function getCampus(): Promise<Campus> {
   return request<Campus>('/campus')
 }
 
-export function listIncidents(): Promise<{ incidents: IncidentSummary[]; count: number }> {
-  return request('/incidents')
+/**
+ * List incidents.
+ *
+ * `active` is live work -- the dispatch board. `archived` is resolved and
+ * closed work. Omitting the view asks for live work, which is what this
+ * endpoint has always returned.
+ */
+export function listIncidents(
+  view: 'active' | 'archived' = 'active',
+): Promise<{ incidents: IncidentSummary[]; count: number }> {
+  return request(`/incidents?view=${view}`)
 }
 
 export function getIncident(incidentId: string): Promise<IncidentDetail> {

@@ -11,6 +11,7 @@ import { AttentionTag } from '../components/AttentionTag'
 import { PriorityToken } from '../components/PriorityToken'
 import {
   type AttentionReason,
+  attentionReason,
   buildAttention,
   floorLabel,
   formatAge,
@@ -39,6 +40,16 @@ interface QueueProps {
     note?: string,
   ) => Promise<void>
   onCheckOverdue: () => Promise<OverdueSweepResult>
+  /**
+   * Render one flat list instead of the attention band and team groups.
+   *
+   * Grouping answers "what should I pick up next" from the whole board. Once
+   * a reader has narrowed it themselves, that question is already answered
+   * and the groups only fragment a short list.
+   */
+  flat?: boolean
+  /** What to say when the list is empty because of narrowing, not calm. */
+  emptyNote?: string
 }
 
 /**
@@ -107,6 +118,35 @@ function IncidentRow({
       </span>
       <SlaCell incident={incident} now={now} />
     </button>
+  )
+}
+
+/** The manual overdue sweep, with whatever the last run reported. */
+function SweepButton({
+  sweeping,
+  note,
+  onRun,
+}: {
+  sweeping: boolean
+  note: string | null
+  onRun: () => Promise<void>
+}) {
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+      {note && (
+        <span className="hint" role="status" aria-live="polite">
+          {note}
+        </span>
+      )}
+      <button
+        type="button"
+        className="btn btn--sm"
+        disabled={sweeping}
+        onClick={() => void onRun()}
+      >
+        {sweeping ? 'Checking…' : 'Check overdue'}
+      </button>
+    </span>
   )
 }
 
@@ -243,6 +283,8 @@ export function QueueView({
   onOpen,
   onResolve,
   onCheckOverdue,
+  flat = false,
+  emptyNote,
 }: QueueProps) {
   const [sweeping, setSweeping] = useState(false)
   const [sweepNote, setSweepNote] = useState<string | null>(null)
@@ -292,32 +334,48 @@ export function QueueView({
     )
   }
 
+  if (flat) {
+    return (
+      <>
+        <div className="section-head">
+          <h2 className="panel__title">Results</h2>
+          <span className="label">
+            {incidents.length} {incidents.length === 1 ? 'incident' : 'incidents'}
+          </span>
+          <span style={{ marginLeft: 'auto' }}>
+            <SweepButton sweeping={sweeping} note={sweepNote} onRun={runSweep} />
+          </span>
+        </div>
+        <div className="panel">
+          {incidents.length === 0 ? (
+            <div className="empty">
+              <strong>Nothing to show.</strong>
+              {emptyNote ?? 'No incidents match.'}
+            </div>
+          ) : (
+            incidents.map((incident) => (
+              <IncidentRow
+                key={incident.incident_id}
+                incident={incident}
+                now={now}
+                reason={attentionReason(incident, now) ?? undefined}
+                secondary={incident.assigned_team_name ?? 'Unassigned'}
+                onOpen={onOpen}
+              />
+            ))
+          )}
+        </div>
+      </>
+    )
+  }
+
   return (
     <>
       <div className="section-head">
         <h2 className="panel__title">Needs your attention</h2>
         <span className="label">{attention.length} of {incidents.length + reviews.length}</span>
-        <span
-          style={{
-            marginLeft: 'auto',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-          }}
-        >
-          {sweepNote && (
-            <span className="hint" role="status" aria-live="polite">
-              {sweepNote}
-            </span>
-          )}
-          <button
-            type="button"
-            className="btn btn--sm"
-            disabled={sweeping}
-            onClick={() => void runSweep()}
-          >
-            {sweeping ? 'Checking…' : 'Check overdue'}
-          </button>
+        <span style={{ marginLeft: 'auto' }}>
+          <SweepButton sweeping={sweeping} note={sweepNote} onRun={runSweep} />
         </span>
       </div>
 

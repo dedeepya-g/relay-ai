@@ -9,6 +9,7 @@ what the pipeline tests cover.
 from __future__ import annotations
 
 import logging
+from typing import Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 
@@ -16,6 +17,7 @@ from api.schemas import (
     BuildingOption,
     CampusResponse,
     DecisionEntry,
+    EscalationPolicyResponse,
     IncidentDetail,
     IncidentList,
     IncidentSummary,
@@ -38,13 +40,15 @@ from models.common import DecisionType, IncidentStatus, Location, ReportStatus
 from models.incident import Incident
 from models.report import Report
 from services.firestore_service import (
+    ACTIVE_INCIDENT_STATUSES,
+    ARCHIVED_INCIDENT_STATUSES,
     create_report,
     get_campus_config,
     get_incident,
     get_report,
     get_work_order,
     list_decisions_for_subject,
-    list_open_incidents,
+    list_incidents_by_status,
     list_reports_by_status,
     list_reports_for_incident,
 )
@@ -93,6 +97,8 @@ def _summarize(incident: Incident, team_names: dict[str, str]) -> IncidentSummar
         work_order_ids=incident.work_order_ids,
         escalation_level=incident.escalation_level,
         sla_due_at=incident.sla_due_at,
+        resolved_at=incident.resolved_at,
+        closed_at=incident.closed_at,
         created_at=incident.created_at,
         updated_at=incident.updated_at,
     )
@@ -231,14 +237,27 @@ async def submit_report(
 
 @router.get("/incidents", response_model=IncidentList, tags=["incidents"])
 async def list_incidents(
-    limit: int = Query(default=50, ge=1, le=MAX_INCIDENTS)
+    limit: int = Query(default=50, ge=1, le=MAX_INCIDENTS),
+    view: Literal["active", "archived"] = Query(
+        default="active",
+        description="'active' is live work -- the dispatch view. 'archived' is "
+        "resolved and closed work.",
+    ),
 ) -> IncidentList:
-    """List incidents that are still live work, newest first.
+    """List incidents, newest first.
 
-    Resolved and closed incidents are omitted: this is the dispatch view, not
-    the archive.
+    Two named views rather than a free-form status filter: a caller asking for
+    an arbitrary combination of statuses would get a response whose meaning
+    depends on the request, and the board only ever wants one of these two.
+    Omitting the parameter returns live work, which is what this route has
+    always returned.
     """
-    incidents = list_open_incidents(get_settings().campus_id, limit=limit)
+    statuses = (
+        ACTIVE_INCIDENT_STATUSES if view == "active" else ARCHIVED_INCIDENT_STATUSES
+    )
+    incidents = list_incidents_by_status(
+        get_settings().campus_id, statuses, limit=limit
+    )
     team_names = _team_names()
     summaries = [_summarize(incident, team_names) for incident in incidents]
     return IncidentList(incidents=summaries, count=len(summaries))
@@ -497,6 +516,12 @@ async def get_campus() -> CampusResponse:
             for team in config.teams
         ],
         sla_minutes=config.sla_minutes,
+        escalation_policy=EscalationPolicyResponse(
+            grace_period_minutes=config.escalation_policy.grace_period_minutes,
+            repeat_interval_minutes=config.escalation_policy.repeat_interval_minutes,
+            max_level=config.escalation_policy.max_level,
+            notify_on_escalation=config.escalation_policy.notify_on_escalation,
+        ),
     )
 
 

@@ -42,6 +42,17 @@ ACTIVE_INCIDENT_STATUSES = frozenset(
     }
 )
 
+#: The other half of the lifecycle: work that is finished. Kept as its own
+#: named set rather than "everything not active", so adding a status to the
+#: enum forces a decision about which side it belongs on instead of silently
+#: landing in the archive.
+ARCHIVED_INCIDENT_STATUSES = frozenset(
+    {
+        IncidentStatus.RESOLVED,
+        IncidentStatus.CLOSED,
+    }
+)
+
 #: Upper bound on documents pulled per deduplication sweep. Status and recency
 #: are filtered in Python rather than in the query so that the read needs only
 #: two equality filters and no composite index; this caps the cost of that
@@ -187,15 +198,24 @@ def update_incident(incident_id: str, fields: dict[str, object]) -> Incident:
     return Incident.from_firestore(snapshot.id, snapshot.to_dict())
 
 
-def list_open_incidents(campus_id: str, limit: int = 100) -> list[Incident]:
-    """Return incidents that are not yet resolved or closed, newest first.
+def list_incidents_by_status(
+    campus_id: str,
+    statuses: frozenset[IncidentStatus],
+    limit: int = 100,
+) -> list[Incident]:
+    """Return this campus's incidents in any of ``statuses``, newest first.
+
+    Status is filtered in Python rather than in the query so the read needs
+    only one equality filter and no composite index, which is the same trade
+    the deduplication sweep makes.
 
     Args:
         campus_id: Campus to scope the query to.
+        statuses: Lifecycle statuses to include.
         limit: Maximum number of incidents to return.
 
     Returns:
-        Live incidents, newest first.
+        Matching incidents, newest first.
     """
     query = (
         _collection(INCIDENTS_COLLECTION)
@@ -206,13 +226,22 @@ def list_open_incidents(campus_id: str, limit: int = 100) -> list[Incident]:
         Incident.from_firestore(snapshot.id, snapshot.to_dict())
         for snapshot in query.stream()
     ]
-    live = [
-        incident
-        for incident in incidents
-        if incident.status in ACTIVE_INCIDENT_STATUSES
-    ]
-    live.sort(key=lambda incident: incident.created_at, reverse=True)
-    return live[:limit]
+    matching = [incident for incident in incidents if incident.status in statuses]
+    matching.sort(key=lambda incident: incident.created_at, reverse=True)
+    return matching[:limit]
+
+
+def list_open_incidents(campus_id: str, limit: int = 100) -> list[Incident]:
+    """Return incidents that are not yet resolved or closed, newest first.
+
+    Args:
+        campus_id: Campus to scope the query to.
+        limit: Maximum number of incidents to return.
+
+    Returns:
+        Live incidents, newest first.
+    """
+    return list_incidents_by_status(campus_id, ACTIVE_INCIDENT_STATUSES, limit)
 
 
 def list_deduplication_candidates(

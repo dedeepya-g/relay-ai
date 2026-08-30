@@ -252,3 +252,59 @@ export function locationLine(
   else if (floor) parts.push(floorLabel(floor))
   return parts.join(' · ')
 }
+
+/** How a list of incidents is ordered. */
+export type SortKey = 'priority' | 'newest' | 'oldest'
+
+export const SORT_LABELS: Record<SortKey, string> = {
+  priority: 'Priority',
+  newest: 'Newest first',
+  oldest: 'Oldest first',
+}
+
+/**
+ * Whether an incident matches a free-text query.
+ *
+ * Searches the title, the category both raw and as displayed, and the id.
+ * The id is included because it is the one string a coordinator copies out of
+ * the board and pastes back in when someone asks about a specific incident.
+ */
+export function matchesQuery(incident: IncidentSummary, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return (
+    incident.title.toLowerCase().includes(q) ||
+    incident.category.toLowerCase().includes(q) ||
+    categoryLabel(incident.category).toLowerCase().includes(q) ||
+    incident.incident_id.toLowerCase().includes(q) ||
+    (incident.assigned_team_name ?? '').toLowerCase().includes(q)
+  )
+}
+
+/**
+ * Order incidents without mutating the caller's array.
+ *
+ * `timeOf` names which timestamp matters for this list: the queue sorts by
+ * when work arrived, the archive by when it finished. Priority sorting falls
+ * back to recency so equal priorities still have a stable, meaningful order.
+ */
+export function sortIncidents<T extends IncidentSummary>(
+  list: T[],
+  key: SortKey,
+  timeOf: (incident: T) => string,
+): T[] {
+  const copy = [...list]
+  if (key === 'priority') {
+    copy.sort(
+      (a, b) =>
+        PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] ||
+        new Date(timeOf(b)).getTime() - new Date(timeOf(a)).getTime(),
+    )
+    return copy
+  }
+  const direction = key === 'newest' ? -1 : 1
+  copy.sort(
+    (a, b) => direction * (new Date(timeOf(a)).getTime() - new Date(timeOf(b)).getTime()),
+  )
+  return copy
+}

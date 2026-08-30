@@ -39,6 +39,13 @@ export interface TeamOption {
   coverage_hours: string
 }
 
+export interface EscalationPolicy {
+  grace_period_minutes: number
+  repeat_interval_minutes: number
+  max_level: number
+  notify_on_escalation: string[]
+}
+
 export interface Campus {
   campus_id: string
   name: string
@@ -46,6 +53,7 @@ export interface Campus {
   buildings: BuildingOption[]
   teams: TeamOption[]
   sla_minutes: Record<Priority, number>
+  escalation_policy: EscalationPolicy
 }
 
 export interface IncidentSummary {
@@ -63,6 +71,10 @@ export interface IncidentSummary {
   /** Work orders dispatched for this incident; empty for older incidents. */
   work_order_ids: string[]
   sla_due_at: string | null
+  /** When the incident was resolved; null while it is live. */
+  resolved_at: string | null
+  /** When the incident was closed; null until it is. */
+  closed_at: string | null
   created_at: string
   updated_at: string
   /**

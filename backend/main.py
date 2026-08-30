@@ -81,7 +81,7 @@ def create_app() -> FastAPI:
     """
     application = FastAPI(
         title="Relay API",
-        description="AI campus facilities coordination agent for Relay University.",
+        description="AI facilities coordination agent for university campuses.",
         version="0.1.0",
         lifespan=lifespan,
     )
