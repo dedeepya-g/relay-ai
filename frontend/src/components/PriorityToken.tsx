@@ -1,24 +1,29 @@
 /**
- * Priority, encoded three ways.
+ * Priority, drawn rather than named.
  *
- * Colour alone would fail a colour-blind reader and fail anyone glancing at
- * this board across a room, so every token also carries an uppercase label and
- * a distinct shape: filled square, half-filled, hollow, dot.
+ * Three segments read by height and fill. Only critical takes colour, so a
+ * board of routine work stays quiet and the one row that is not routine is
+ * the only one showing red.
+ *
+ * The level is still carried three ways -- height, fill weight, and the
+ * accessible name -- so it survives greyscale, colour blindness, and a
+ * screen reader. What it no longer needs is the word beside it.
  */
 import type { Priority } from '../lib/types'
 
-const LABELS: Record<Priority, string> = {
-  critical: 'Critical',
-  high: 'High',
-  medium: 'Medium',
-  low: 'Low',
+const SPOKEN: Record<Priority, string> = {
+  critical: 'Critical priority',
+  high: 'High priority',
+  medium: 'Medium priority',
+  low: 'Low priority',
 }
 
 export function PriorityToken({ priority }: { priority: Priority }) {
   return (
-    <span className={`priority priority--${priority}`}>
-      <span className="priority__token" aria-hidden="true" />
-      {LABELS[priority]}
+    <span className={`pri pri--${priority}`} role="img" aria-label={SPOKEN[priority]}>
+      <span />
+      <span />
+      <span />
     </span>
   )
 }

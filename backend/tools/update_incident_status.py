@@ -127,8 +127,7 @@ def update_incident_status(
             subject_type="incidents",
             subject_id=incident_id,
             outcome=f"{incident.status.value} to {target.value}",
-            rationale=notes
-            or f"Status moved from {incident.status.value} to {target.value}.",
+            rationale=notes or "No note was left.",
             tool_name="update_incident_status",
             model=None,
         )

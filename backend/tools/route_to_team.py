@@ -94,7 +94,7 @@ def route_to_team(incident_id: str) -> dict[str, Any]:
             f"incident falls back to {team.name}."
         )
     else:
-        rationale = f"{team.name} owns {incident.category.value} on this campus."
+        rationale = f"{team.name} handles {incident.category.value} work on this campus."
 
     update_incident(incident_id, {"assigned_team_id": team.id})
     record_decision(

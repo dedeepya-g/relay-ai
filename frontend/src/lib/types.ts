@@ -68,6 +68,8 @@ export interface IncidentSummary {
   assigned_team_id: string | null
   assigned_team_name: string | null
   report_count: number
+  /** Plain-language description, shown on row focus. */
+  summary: string
   /** Work orders dispatched for this incident; empty for older incidents. */
   work_order_ids: string[]
   sla_due_at: string | null

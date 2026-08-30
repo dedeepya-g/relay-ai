@@ -94,6 +94,7 @@ def _summarize(incident: Incident, team_names: dict[str, str]) -> IncidentSummar
         assigned_team_id=incident.assigned_team_id,
         assigned_team_name=team_names.get(incident.assigned_team_id or ""),
         report_count=len(incident.report_ids),
+        summary=incident.summary,
         work_order_ids=incident.work_order_ids,
         escalation_level=incident.escalation_level,
         sla_due_at=incident.sla_due_at,

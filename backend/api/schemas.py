@@ -108,6 +108,11 @@ class IncidentSummary(RelaySchema):
         "configuration so callers never have to map team ids themselves.",
     )
     report_count: int
+    summary: str = Field(
+        default="",
+        description="Plain-language description of the incident, shown when a "
+        "row is focused so a reader can tell what it is without opening it.",
+    )
     work_order_ids: list[str] = Field(
         default_factory=list,
         description="Work orders dispatched for this incident, newest last. "

@@ -13,28 +13,21 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { ListControls } from '../../components/ListControls'
-import { PriorityToken } from '../../components/PriorityToken'
+import { CategoryGlyph } from '../../components/CategoryGlyph'
+import { ClearBoard } from '../../components/ClearBoard'
 import { useOps } from '../../layouts/OpsLayout'
 import { listIncidents } from '../../lib/api'
 import {
   formatAge,
-  locationLine,
   matchesQuery,
   sortIncidents,
   statusLabel,
   type SortKey,
 } from '../../lib/format'
-import type { Campus, IncidentSummary } from '../../lib/types'
-
-function buildingName(campus: Campus | null, buildingId: string): string {
-  return (
-    campus?.buildings.find((building) => building.building_id === buildingId)?.name ??
-    buildingId
-  )
-}
+import type { IncidentSummary } from '../../lib/types'
 
 export function ArchivePage() {
-  const { campus, now, reportFailure } = useOps()
+  const { now, reportFailure } = useOps()
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const [incidents, setIncidents] = useState<IncidentSummary[] | null>(null)
@@ -105,7 +98,8 @@ export function ArchivePage() {
             <strong>Reading the archive…</strong>
           </div>
         ) : visible.length === 0 ? (
-          <div className="empty">
+          <div className="empty empty--art">
+            <ClearBoard />
             <strong>
               {incidents.length === 0
                 ? 'Nothing has been finished yet.'
@@ -119,46 +113,26 @@ export function ArchivePage() {
           visible.map((incident) => (
             <button
               type="button"
-              className="row"
+              className="row row--archive"
               key={incident.incident_id}
               onClick={() => navigate(`/ops/incidents/${incident.incident_id}`)}
             >
-              <span className="row__flags">
-                <span className={`tag tag--${incident.status}`}>
-                  {statusLabel(incident.status)}
-                </span>
-                <PriorityToken priority={incident.priority} />
-              </span>
+              {/* Three things. Finished work is looked up, not scanned, so the
+                  row carries what identifies it and when it ended -- the rest
+                  is one click away and has room there. */}
+              <CategoryGlyph category={incident.category} labelled />
+
               <span className="row__main">
                 <span className="row__title">{incident.title}</span>
-                <span className="row__sub">{incident.incident_id}</span>
+                <span className="row__peek">{incident.summary}</span>
               </span>
-              <span className="row__team">
-                {locationLine(
-                  buildingName(campus, incident.building_id),
-                  incident.floor,
-                  incident.room,
-                )}
-              </span>
-              <span className="row__num">
-                {incident.report_count}{' '}
-                {incident.report_count === 1 ? 'report' : 'reports'}
-              </span>
-              {/* The moment the work actually finished, not the last time
-                  the document changed. A closed incident reports when it was
-                  closed; one still awaiting closure reports when it was
-                  resolved. */}
-              <span className="row__sla">
+
+              <span className="glyph row__finished">
+                {statusLabel(incident.status).toLowerCase()}{' '}
                 {formatAge(
                   incident.closed_at ?? incident.resolved_at ?? incident.updated_at,
                   now,
                 )}
-                <span
-                  className="label"
-                  style={{ display: 'block', letterSpacing: '0.06em' }}
-                >
-                  {incident.closed_at ? 'closed' : incident.resolved_at ? 'resolved' : 'updated'}
-                </span>
               </span>
             </button>
           ))

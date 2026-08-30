@@ -28,7 +28,7 @@ export function ListControls({
   onSort,
   showing,
   total,
-  placeholder = 'Search titles, categories, teams, ids…',
+  placeholder = 'Search the board…',
 }: ListControlsProps) {
   return (
     <div className="controls">

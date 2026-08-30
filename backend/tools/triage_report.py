@@ -110,9 +110,12 @@ and floor.
 When a field is genuinely uncertain, list it. An unnecessary confirmation costs \
 one question; an assumed location costs a crew sent to the wrong room.
 
-confidence_note -- one sentence naming the specific uncertainty in your \
-classification, or stating plainly that the report was unambiguous. Do not \
-restate the report.
+confidence_note -- one sentence for the coordinator who will read this, \
+naming what is uncertain or missing in the REPORT. Write about the report, \
+never about your own analysis: "the reporter did not say which floor" and not \
+"the classification is clear". Never use the words classification, category, \
+model, confidence, or analysis. If nothing is uncertain, say plainly that the \
+report was specific. Do not restate the report.
 
 Report only what the text and photo support. If the report is vague, say so in \
 confidence_note and classify conservatively rather than guessing at detail.\

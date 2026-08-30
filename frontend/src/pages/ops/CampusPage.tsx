@@ -10,6 +10,8 @@
  * an SLA here would silently re-time every incident already open against it.
  */
 import { useCampus } from '../../lib/CampusContext'
+import { CategoryGlyph } from '../../components/CategoryGlyph'
+import { PriorityToken } from '../../components/PriorityToken'
 import { categoryLabel, floorLabel } from '../../lib/format'
 import type { Priority, RoomOption } from '../../lib/types'
 
@@ -63,63 +65,49 @@ export function CampusPage() {
         </span>
       </div>
 
-      <p className="hint" style={{ marginBottom: '1.25rem', maxWidth: '68ch' }}>
-        The configuration Relay reads when it routes, prioritises, and escalates.
-        Every decision on the board is made against these values. Read-only here:
-        changing a deadline would re-time incidents already open against it.
+      <p className="hint" style={{ marginBottom: '1.25rem', maxWidth: '62ch' }}>
+        Every call on the board is made against these values.
       </p>
 
-      {/* --- Policy ---------------------------------------------------------- */}
-      <div className="detail__grid">
-        <div className="panel">
-          <div className="panel__head">
-            <h3 className="panel__title">Response deadlines</h3>
-            <span className="label">by priority</span>
-          </div>
-          <div className="factgrid">
-            {PRIORITY_ORDER.filter((p) => campus.sla_minutes[p] !== undefined).map(
-              (priority) => (
-                <div key={priority}>
-                  <span className={`priority priority--${priority}`}>
-                    <span className="priority__token" />
-                    {priority}
-                  </span>
-                  <p className="fact__value">{duration(campus.sla_minutes[priority])}</p>
-                </div>
-              ),
-            )}
-          </div>
+      <div className="panel">
+        <div className="panel__head">
+          <h3 className="panel__title">Response policy</h3>
+          <span className="label">and what happens when they pass</span>
         </div>
-
-        <div className="panel">
-          <div className="panel__head">
-            <h3 className="panel__title">Escalation</h3>
-            <span className="label">when a deadline passes</span>
+        <div className="factgrid">
+          {PRIORITY_ORDER.filter((p) => campus.sla_minutes[p] !== undefined).map(
+            (priority) => (
+              <div key={priority}>
+                <span className="fact__value--glyph" style={{ display: 'flex' }}>
+                  <PriorityToken priority={priority} />
+                  <span className="label">{priority}</span>
+                </span>
+                <p className="fact__value">{duration(campus.sla_minutes[priority])}</p>
+              </div>
+            ),
+          )}
+        </div>
+        <div className="factgrid" style={{ borderTop: '1px solid var(--line)' }}>
+          <div>
+            <span className="label">Wait before raising</span>
+            <p className="fact__value">{duration(policy.grace_period_minutes)}</p>
           </div>
-          <div className="factgrid">
-            <div>
-              <span className="label">Grace period</span>
-              <p className="fact__value">{duration(policy.grace_period_minutes)}</p>
-            </div>
-            <div>
-              <span className="label">Repeat every</span>
-              <p className="fact__value">{duration(policy.repeat_interval_minutes)}</p>
-            </div>
-            <div>
-              <span className="label">Stops at level</span>
-              <p className="fact__value">{policy.max_level}</p>
-            </div>
+          <div>
+            <span className="label">Raise again every</span>
+            <p className="fact__value">{duration(policy.repeat_interval_minutes)}</p>
+          </div>
+          <div>
+            <span className="label">Stops after</span>
+            <p className="fact__value">{policy.max_level} raises</p>
           </div>
           {policy.notify_on_escalation.length > 0 && (
-            <div style={{ padding: '0 1rem 1rem' }}>
-              <span className="label" style={{ display: 'block', marginBottom: '0.375rem' }}>
-                Notified at every level
-              </span>
-              {policy.notify_on_escalation.map((address) => (
-                <p className="row__sub" key={address} style={{ marginTop: 0 }}>
-                  {address}
-                </p>
-              ))}
+            <div>
+              <span className="label">Goes to</span>
+              <p className="fact__value" style={{ fontSize: '0.8125rem' }}>
+                {policy.notify_on_escalation
+                  .map((a) => a.split('@')[0].replace(/\./g, ' '))
+                  .join(', ')}
+              </p>
             </div>
           )}
         </div>
@@ -127,29 +115,36 @@ export function CampusPage() {
 
       {/* --- Teams ----------------------------------------------------------- */}
       <div className="section-head">
-        <h3 className="panel__title">Maintenance teams</h3>
+        <h3 className="panel__title">Teams</h3>
         <span className="label">
           {campus.teams.length} {campus.teams.length === 1 ? 'team' : 'teams'}
         </span>
       </div>
       <div className="panel">
         {campus.teams.map((team) => (
-          <div className="evidence__item" key={team.team_id} style={{ padding: '0.875rem 1rem' }}>
-            <div className="evidence__meta" style={{ justifyContent: 'space-between' }}>
-              <span style={{ fontWeight: 500 }}>{team.name}</span>
-              <span className="idtag">{team.coverage_hours}</span>
+          <details className="disclose" key={team.team_id}>
+            <summary className="disclose__row">
+              <span className="disclose__caret" aria-hidden="true" />
+              <span className="disclose__name">{team.name}</span>
+              <span className="disclose__stat">
+                {team.categories.length}{' '}
+                {team.categories.length === 1 ? 'category' : 'categories'}
+              </span>
+            </summary>
+            <div className="disclose__body">
+              <div className="glyphrow">
+                {team.categories.map((category) => (
+                  <span key={category}>
+                    <CategoryGlyph category={category} />
+                    {categoryLabel(category)}
+                  </span>
+                ))}
+              </div>
+              <p className="hint" style={{ marginTop: '0.625rem' }}>
+                {team.coverage_hours}
+              </p>
             </div>
-            <p className="row__sub" style={{ marginTop: '0.25rem' }}>
-              {team.team_id}
-            </p>
-            <div className="evidence__meta" style={{ marginTop: '0.5rem' }}>
-              {team.categories.map((category) => (
-                <span className="tag tag--resolved" key={category}>
-                  {categoryLabel(category)}
-                </span>
-              ))}
-            </div>
-          </div>
+          </details>
         ))}
       </div>
 
@@ -162,48 +157,48 @@ export function CampusPage() {
         </span>
       </div>
 
-      {campus.buildings.map((building) => (
-        <div className="panel" key={building.building_id} style={{ marginBottom: '1rem' }}>
-          <div className="panel__head">
-            <h3 className="panel__title">{building.name}</h3>
-            <span className="idtag">{building.building_id}</span>
-            <span className="label" style={{ marginLeft: 'auto' }}>
-              {building.floors.length} floors · {building.rooms.length} rooms
-            </span>
-          </div>
+      <div className="panel">
+        {campus.buildings.map((building) => (
+          <details className="disclose" key={building.building_id}>
+            <summary className="disclose__row">
+              <span className="disclose__caret" aria-hidden="true" />
+              <span className="disclose__name">{building.name}</span>
+              <span className="disclose__stat">
+                {building.floors.length} floors · {building.rooms.length} rooms
+              </span>
+            </summary>
+            <div className="disclose__body">
+              {building.aliases.length > 0 && (
+                <p className="hint" style={{ marginBottom: '0.75rem' }}>
+                  Also called {building.aliases.join(', ')}
+                </p>
+              )}
+              {building.floors.map((floor) => {
+                const rooms = roomsByFloor(building.rooms, floor)
+                return (
+                  <div className="floorblock" key={floor}>
+                    <span className="label">{floorLabel(floor)}</span>
+                    {rooms.length === 0 ? (
+                      <p className="hint">No rooms listed.</p>
+                    ) : (
+                      <p className="roomlist">
+                        {rooms.map((room, i) => (
+                          <span key={room.number}>
+                            {i > 0 && <span className="roomlist__sep"> · </span>}
+                            <span className="roomlist__n">{room.number}</span>{' '}
+                            {room.name ?? room.room_type.replace('_', ' ')}
+                          </span>
+                        ))}
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </details>
+        ))}
+      </div>
 
-          {building.aliases.length > 0 && (
-            <p className="hint" style={{ padding: '0.75rem 1rem 0' }}>
-              Also reported as: {building.aliases.join(', ')}
-            </p>
-          )}
-
-          <div className="evidence">
-            {building.floors.map((floor) => {
-              const rooms = roomsByFloor(building.rooms, floor)
-              return (
-                <div className="evidence__item" key={floor}>
-                  <span className="label">{floorLabel(floor)}</span>
-                  {rooms.length === 0 ? (
-                    <p className="hint" style={{ marginTop: '0.25rem' }}>
-                      No rooms configured on this floor.
-                    </p>
-                  ) : (
-                    <div className="evidence__meta" style={{ marginTop: '0.375rem' }}>
-                      {rooms.map((room) => (
-                        <span className="roomchip" key={room.number}>
-                          <span className="roomchip__n">{room.number}</span>
-                          {room.name ?? room.room_type.replace('_', ' ')}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      ))}
     </>
   )
 }

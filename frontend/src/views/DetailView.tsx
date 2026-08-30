@@ -352,10 +352,9 @@ export function DetailView({
         <div>
           <div className="panel">
             <div className="panel__head">
-              <h2 className="panel__title">Decision trail</h2>
+              <h2 className="panel__title">What happened</h2>
               <span className="label">
-                {decisions.length} {decisions.length === 1 ? 'decision' : 'decisions'} ·
-                grouped by report
+                {decisions.length} {decisions.length === 1 ? 'decision' : 'decisions'}
               </span>
             </div>
             <DecisionLedger
@@ -397,7 +396,7 @@ export function DetailView({
 
           <div className="panel">
             <div className="panel__head">
-              <h2 className="panel__title">What was reported</h2>
+              <h2 className="panel__title">Reports</h2>
               <span className="label">{reports.length} linked</span>
             </div>
             <div className="evidence">
@@ -430,7 +429,7 @@ export function DetailView({
 
           <div className="panel">
             <div className="panel__head">
-              <h2 className="panel__title">Consolidated summary</h2>
+              <h2 className="panel__title">Summary</h2>
             </div>
             <p style={{ padding: '0.875rem 1rem', fontSize: '0.875rem', whiteSpace: 'pre-line' }}>
               {summary}

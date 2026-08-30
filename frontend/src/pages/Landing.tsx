@@ -9,45 +9,17 @@
 import { Link } from 'react-router-dom'
 
 import { Convergence } from '../components/landing/Convergence'
+import { LedgerProof } from '../components/landing/LedgerProof'
+import { StageIcon } from '../components/landing/StageIcon'
 
 /** The pipeline, named as the system names it. Executor matches the ledger. */
 const STAGES = [
-  {
-    n: '01',
-    name: 'Triage',
-    by: 'model',
-    text: 'Reads the report and returns its category, any wording that signals urgency, and which location details the reporter left out.',
-  },
-  {
-    n: '02',
-    name: 'Shortlist',
-    by: 'query',
-    text: 'Narrows the comparison to incidents already open in the same building, so the judgement below is made against a plausible few.',
-  },
-  {
-    n: '03',
-    name: 'Deduplicate',
-    by: 'model',
-    text: 'Decides whether the report describes a fault already being tracked, a separate one, or something too ambiguous to call.',
-  },
-  {
-    n: '04',
-    name: 'Prioritise',
-    by: 'rule',
-    text: 'Sets priority and a deadline from how many people reported the fault and how many described danger.',
-  },
-  {
-    n: '05',
-    name: 'Route',
-    by: 'rule',
-    text: 'Assigns the maintenance team that owns this category of work on this campus.',
-  },
-  {
-    n: '06',
-    name: 'Dispatch',
-    by: 'rule',
-    text: 'Raises a work order with field instructions built from what each reporter actually said.',
-  },
+  { n: '01', key: 'triage', name: 'Triage', text: 'Reads the report and names the fault.' },
+  { n: '02', key: 'shortlist', name: 'Shortlist', text: 'Narrows to what is already open nearby.' },
+  { n: '03', key: 'deduplicate', name: 'Deduplicate', text: 'Decides if this is one of them.' },
+  { n: '04', key: 'prioritise', name: 'Prioritise', text: 'Sets urgency and a deadline.' },
+  { n: '05', key: 'route', name: 'Route', text: 'Picks the team that owns the work.' },
+  { n: '06', key: 'dispatch', name: 'Dispatch', text: 'Raises the ticket, in the reporter’s words.' },
 ]
 
 export function Landing() {
@@ -59,8 +31,8 @@ export function Landing() {
           <p className="hero__sub">
             Relay reads maintenance reports written in plain language, works out
             which ones describe the same underlying fault, and carries each problem
-            through prioritisation, routing, and dispatch — recording the reasoning
-            behind every decision.
+            through prioritisation, routing, and dispatch — keeping a record of why
+            each call was made.
           </p>
           <div className="hero__actions">
             <Link to="/report" className="btn btn--primary btn--lg">
@@ -76,16 +48,21 @@ export function Landing() {
         </div>
 
         <div className="hero__visual">
+          <div className="hero__framing">
+            <span className="label">As reported</span>
+            <span className="hero__arrow" aria-hidden="true" />
+            <span className="label">As Relay files it</span>
+          </div>
           <Convergence />
         </div>
       </section>
 
       <section className="band">
         <div className="band__inner">
-          <h2 className="display band__title">The handoff gap</h2>
+          <h2 className="display band__title">The gap</h2>
           <div className="problem">
             <div>
-              <h3 className="problem__head">One fault becomes several tickets</h3>
+              <h3 className="problem__head">One fault, several tickets</h3>
               <p className="problem__body">
                 Reporters describe the same problem differently, and a flat category
                 dropdown has no way to tell that they mean one thing. Crews get
@@ -93,7 +70,7 @@ export function Landing() {
               </p>
             </div>
             <div>
-              <h3 className="problem__head">Or several reports become none</h3>
+              <h3 className="problem__head">Or several reports, none</h3>
               <p className="problem__body">
                 Reports arriving hours apart are never connected, so a worsening
                 fault reads as a series of unrelated minor complaints and waits
@@ -112,10 +89,10 @@ export function Landing() {
         <div className="stages__head">
           <h2 className="display band__title">What Relay does</h2>
           <p className="stages__lede">
-            Six stages. A model is used in exactly two of them, both genuine
-            judgements about ambiguous language. Everything after is deterministic
-            rule application over campus configuration, so the same evidence always
-            produces the same priority, the same team, and the same escalation.
+            Two of these six are judgement calls. The rest apply the campus's own
+            written policy, so the same evidence always produces the same answer —
+            and an escalation stays defensible when someone asks why a work order
+            jumped the queue.
           </p>
         </div>
 
@@ -123,14 +100,27 @@ export function Landing() {
           {STAGES.map((stage) => (
             <li className="stage" key={stage.n}>
               <div className="stage__top">
+                <StageIcon stage={stage.key} />
                 <span className="stage__n">{stage.n}</span>
-                <span className={`stage__by stage__by--${stage.by}`}>{stage.by}</span>
               </div>
               <h3 className="stage__name">{stage.name}</h3>
               <p className="stage__text">{stage.text}</p>
             </li>
           ))}
         </ol>
+      </section>
+
+      <section className="proofband">
+        <div className="proofband__inner">
+          <div>
+            <h2 className="display band__title">Every call, on the record</h2>
+            <p className="stages__lede">
+              Each incident carries the reasoning behind every decision made about
+              it — including the ones a person made. This is the actual view.
+            </p>
+          </div>
+          <LedgerProof />
+        </div>
       </section>
 
       <section className="closer">
@@ -156,7 +146,7 @@ export function Landing() {
 
       <footer className="sitefoot">
         <span className="wordmark">Relay</span>
-        <span className="sitefoot__note">AI facilities coordination for university campuses</span>
+        <span className="sitefoot__note">Facilities coordination for university campuses</span>
       </footer>
     </>
   )

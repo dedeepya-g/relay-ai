@@ -8,16 +8,11 @@
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { ListControls } from '../../components/ListControls'
+import { QueueFilters } from '../../components/QueueFilters'
 import type { QueueFilter } from '../../components/OpsNav'
 import { useOps } from '../../layouts/OpsLayout'
 import { buildAttention, matchesQuery, sortIncidents, type SortKey } from '../../lib/format'
 import { QueueView } from '../../views/QueueView'
-
-const FILTER_LABELS: Record<QueueFilter, string> = {
-  attention: 'Needs you',
-  critical: 'Critical',
-  open: 'Open incidents',
-}
 
 function isFilter(value: string | null): value is QueueFilter {
   return value === 'attention' || value === 'critical' || value === 'open'
@@ -90,6 +85,13 @@ export function QueuePage() {
 
   return (
     <>
+      <QueueFilters
+        active={filter}
+        attention={flaggedIds.size + reviews.length}
+        critical={incidents.filter((i) => i.priority === 'critical').length}
+        open={incidents.length}
+      />
+
       <ListControls
         query={query}
         onQuery={(value) => setParam('q', value)}
@@ -98,20 +100,6 @@ export function QueuePage() {
         showing={visible.length}
         total={incidents.length}
       />
-
-      {filter && (
-        <p className="filterbar">
-          <span className="label">Filtered</span>
-          <span>{FILTER_LABELS[filter]}</span>
-          <button
-            type="button"
-            className="btn btn--sm"
-            onClick={() => setParam('filter', null)}
-          >
-            Clear filter
-          </button>
-        </p>
-      )}
 
       <QueueView
         incidents={visible}

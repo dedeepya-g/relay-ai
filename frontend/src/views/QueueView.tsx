@@ -8,12 +8,11 @@
 import { useState } from 'react'
 
 import { AttentionTag } from '../components/AttentionTag'
+import { ClearBoard } from '../components/ClearBoard'
 import { PriorityToken } from '../components/PriorityToken'
 import {
-  type AttentionReason,
-  attentionReason,
   buildAttention,
-  floorLabel,
+  dueSoonSeconds,
   formatAge,
   formatCountdown,
   locationLine,
@@ -52,18 +51,6 @@ interface QueueProps {
   emptyNote?: string
 }
 
-/**
- * The part of a location the row title does not already say.
- *
- * Titles carry the building, so repeating it here would spend a column on
- * something already on screen and truncate the part that is new.
- */
-function preciseLocation(incident: IncidentSummary): string {
-  if (incident.room) return `Room ${incident.room}`
-  if (incident.floor) return floorLabel(incident.floor)
-  return 'Location not given'
-}
-
 function buildingName(campus: Campus | null, buildingId: string): string {
   return (
     campus?.buildings.find((building) => building.building_id === buildingId)?.name ??
@@ -71,52 +58,47 @@ function buildingName(campus: Campus | null, buildingId: string): string {
   )
 }
 
-function SlaCell({ incident, now }: { incident: IncidentSummary; now: number }) {
-  const remaining = secondsUntil(incident.sla_due_at, now)
-  if (remaining === null) return <span className="row__sla">—</span>
-  const tone = remaining < 0 ? ' row__sla--over' : remaining <= 60 ? ' row__sla--soon' : ''
-  return (
-    <span className={`row__sla${tone}`}>
-      {formatCountdown(remaining)}
-      <span className="label" style={{ display: 'block', letterSpacing: '0.06em' }}>
-        {remaining < 0 ? 'over' : 'left'}
-      </span>
-    </span>
-  )
-}
-
 function IncidentRow({
   incident,
   now,
-  reason,
-  secondary,
+  campus,
   onOpen,
 }: {
   incident: IncidentSummary
   now: number
-  reason?: AttentionReason
-  secondary: string
+  campus: Campus | null
   onOpen: (id: string) => void
 }) {
+  const remaining = secondsUntil(incident.sla_due_at, now)
+  const raised = (incident.escalation_level ?? 0) > 0
+  const over = remaining !== null && remaining < 0
+  const soon = remaining !== null && !over && remaining <= dueSoonSeconds(incident)
+
   return (
     <button type="button" className="row enter" onClick={() => onOpen(incident.incident_id)}>
-      {/* Escalation is read from `escalation_level`, not from the status field,
-          matching `attentionReason`. A row carries it wherever it appears, and
-          the band's own reason tag is suppressed when it would only repeat it. */}
-      <span className="row__flags">
-        {incident.escalation_level ? <AttentionTag reason="escalated" /> : null}
-        {reason && reason !== 'escalated' && <AttentionTag reason={reason} />}
-        <PriorityToken priority={incident.priority} />
-      </span>
+      <PriorityToken priority={incident.priority} />
+
       <span className="row__main">
         <span className="row__title">{incident.title}</span>
-        <span className="row__sub">{incident.incident_id}</span>
+        {/* The row carries four things; everything else waits in the detail
+            view. What it cannot carry, it reveals on focus rather than
+            crowding every row permanently. */}
+        <span className="row__peek">{incident.summary}</span>
       </span>
-      <span className="row__team">{secondary}</span>
-      <span className="row__num">
-        {incident.report_count} {incident.report_count === 1 ? 'report' : 'reports'}
+
+      <span className="row__where">
+        {locationLine(
+          buildingName(campus, incident.building_id),
+          incident.floor,
+          incident.room,
+        )}
       </span>
-      <SlaCell incident={incident} now={now} />
+
+      <span className={`row__sla${over ? ' row__sla--over' : soon ? ' row__sla--soon' : ''}`}>
+        {raised && <span className="dot dot--raised" aria-label="Raised" />}
+        {!raised && soon && <span className="dot dot--soon" aria-label="Due soon" />}
+        {remaining === null ? '—' : formatCountdown(remaining)}
+      </span>
     </button>
   )
 }
@@ -348,7 +330,8 @@ export function QueueView({
         </div>
         <div className="panel">
           {incidents.length === 0 ? (
-            <div className="empty">
+            <div className="empty empty--art">
+              <ClearBoard />
               <strong>Nothing to show.</strong>
               {emptyNote ?? 'No incidents match.'}
             </div>
@@ -358,8 +341,7 @@ export function QueueView({
                 key={incident.incident_id}
                 incident={incident}
                 now={now}
-                reason={attentionReason(incident, now) ?? undefined}
-                secondary={incident.assigned_team_name ?? 'Unassigned'}
+                campus={campus}
                 onOpen={onOpen}
               />
             ))
@@ -372,7 +354,7 @@ export function QueueView({
   return (
     <>
       <div className="section-head">
-        <h2 className="panel__title">Needs your attention</h2>
+        <h2 className="panel__title">Needs you</h2>
         <span className="label">{attention.length} of {incidents.length + reviews.length}</span>
         <span style={{ marginLeft: 'auto' }}>
           <SweepButton sweeping={sweeping} note={sweepNote} onRun={runSweep} />
@@ -381,9 +363,10 @@ export function QueueView({
 
       <div className={`panel attention${attention.length === 0 ? ' attention--calm' : ''}`}>
         {attention.length === 0 ? (
-          <div className="empty">
-            <strong>Nothing is waiting on you.</strong>
-            Relay placed every report on its own, and no incident has passed its deadline.
+          <div className="empty empty--art">
+            <ClearBoard />
+            <strong>All clear.</strong>
+            Nothing is waiting on you.
           </div>
         ) : (
           attention.map((item) =>
@@ -401,8 +384,7 @@ export function QueueView({
                 key={item.incident!.incident_id}
                 incident={item.incident!}
                 now={now}
-                reason={item.reason}
-                secondary={item.incident!.assigned_team_name ?? 'Unassigned'}
+                campus={campus}
                 onOpen={onOpen}
               />
             ),
@@ -416,12 +398,10 @@ export function QueueView({
             <h2 className="panel__title">Open incidents</h2>
           </div>
           <div className="panel">
-            <div className="empty">
-              <strong>No open incidents on campus.</strong>
-              Relay is watching{' '}
-              {campus?.buildings.map((building) => building.name).join(', ') ??
-                'this campus'}
-              . Submitted reports appear here once they are classified.
+            <div className="empty empty--art">
+              <ClearBoard />
+              <strong>Nothing open.</strong>
+              New reports land here as they come in.
             </div>
           </div>
         </>
@@ -440,7 +420,7 @@ export function QueueView({
                   key={incident.incident_id}
                   incident={incident}
                   now={now}
-                  secondary={preciseLocation(incident)}
+                  campus={campus}
                   onOpen={onOpen}
                 />
               ))}

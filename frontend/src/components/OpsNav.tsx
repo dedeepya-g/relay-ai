@@ -1,88 +1,54 @@
 /**
- * Persistent ops header: where you are, what is outstanding, where you can go.
+ * The ops header: two places to be, and one thing to do.
  *
- * The counters are links, not labels. Each already names a subset of the
- * board, so making it navigate to that subset costs nothing and saves a
- * reader translating "1 critical" into a scan of the queue.
+ * Everything that competed here has moved to where it belongs. The counters
+ * were filters for the queue, so they live on the queue; showing them above
+ * the archive meant carrying numbers that could not act on what was on screen.
+ * Campus configuration is reference, consulted rarely and never mid-shift, so
+ * it sits behind a settings control rather than taking a third of the bar.
  *
- * The filter lives in the url rather than in component state: it survives the
- * back button, it can be sent to someone, and clicking a counter from the
- * archive or the campus page lands on the queue already narrowed.
+ * What remains is the shape of the work: live work, finished work, and adding
+ * something new.
  */
-import { Link, NavLink, useLocation, useSearchParams } from 'react-router-dom'
+import { Link, NavLink } from 'react-router-dom'
 
 export type QueueFilter = 'attention' | 'critical' | 'open'
 
-interface OpsNavProps {
-  attention: number
-  critical: number
-  open: number
-}
-
-/** Ops destinations, in the order a coordinator works through them. */
 const NAV = [
   { to: '/ops', label: 'Queue', end: true },
   { to: '/ops/archive', label: 'Archive', end: false },
-  { to: '/ops/campus', label: 'Campus', end: false },
 ]
 
-const COUNTS: { key: QueueFilter; label: string }[] = [
-  { key: 'attention', label: 'Needs you' },
-  { key: 'critical', label: 'Critical' },
-  { key: 'open', label: 'Open' },
-]
-
-export function OpsNav({ attention, critical, open }: OpsNavProps) {
-  const [params] = useSearchParams()
-  const location = useLocation()
-  // A filter only means anything on the queue; elsewhere the counters are
-  // still links, they just carry the reader there.
-  const active = location.pathname === '/ops' ? params.get('filter') : null
-  const values: Record<QueueFilter, number> = { attention, critical, open }
-
+export function OpsNav() {
   return (
     <header className="statusbar">
-      {/* The product name only. Naming a campus here would tie the board to
-          one deployment; which campus this is belongs on the campus page,
-          where the rest of its configuration lives. */}
       <div className="statusbar__brand">
         <Link to="/" className="statusbar__mark wordmark">
           Relay
         </Link>
       </div>
 
-      <div className="statusbar__counts" role="status" aria-live="polite">
-        {COUNTS.map((count) => {
-          const isActive = active === count.key
-          return (
-            <Link
-              key={count.key}
-              // Clicking the active filter clears it, so one target both
-              // applies and undoes -- there is no separate "clear" to hunt for.
-              to={isActive ? '/ops' : `/ops?filter=${count.key}`}
-              className={`count count--link${
-                count.key === 'attention' ? ' count--attention' : ''
-              }${isActive ? ' count--on' : ''}`}
-              aria-pressed={isActive}
-              title={
-                isActive
-                  ? `Showing ${count.label.toLowerCase()} only — click to clear`
-                  : `Show ${count.label.toLowerCase()} only`
-              }
-            >
-              <span className="count__value">{values[count.key]}</span>
-              <span className="label">{count.label}</span>
-            </Link>
-          )
-        })}
-      </div>
-
       <nav className="statusbar__nav" aria-label="Operations">
         {NAV.map((item) => (
-          <NavLink key={item.to} to={item.to} end={item.end} className="btn btn--ghost btn--sm">
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            className="btn btn--ghost btn--sm"
+          >
             {item.label}
           </NavLink>
         ))}
+
+        {/* Reference, not a destination competing with the two above. */}
+        <NavLink to="/ops/campus" className="navicon" title="Campus setup" aria-label="Campus setup">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor"
+               strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="8" cy="8" r="2.1" />
+            <path d="M8 1.5v1.8M8 12.7v1.8M14.5 8h-1.8M3.3 8H1.5M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3M12.6 12.6l-1.3-1.3M4.7 4.7 3.4 3.4" />
+          </svg>
+        </NavLink>
+
         <Link to="/report" className="btn btn--primary btn--sm">
           New report
         </Link>

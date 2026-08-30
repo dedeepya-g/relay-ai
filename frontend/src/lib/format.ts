@@ -144,6 +144,19 @@ export function buildAttention(
   now: number,
 ): AttentionItem[] {
   const flagged = incidents
+    // Product rule: work someone has actively picked up is never in the
+    // attention band, whatever its deadline or escalation level says.
+    //
+    // The band answers one question -- what is not being dealt with -- and an
+    // incident in progress has an answer already. A missed deadline on work
+    // underway is a fact about the deadline, not a call to action, and
+    // flagging it trains a reader to ignore the band. This is deliberate and
+    // permanent, not a way of quieting a noisy board: active human ownership
+    // outranks a stale timestamp.
+    //
+    // The row still shows that it is late. The information is not hidden,
+    // it just stops asking for someone.
+    .filter((incident) => incident.status !== 'in_progress')
     .map((incident) => ({ incident, reason: attentionReason(incident, now) }))
     .filter(
       (entry): entry is { incident: IncidentSummary; reason: AttentionReason } =>
@@ -265,9 +278,11 @@ export const SORT_LABELS: Record<SortKey, string> = {
 /**
  * Whether an incident matches a free-text query.
  *
- * Searches the title, the category both raw and as displayed, and the id.
- * The id is included because it is the one string a coordinator copies out of
- * the board and pastes back in when someone asks about a specific incident.
+ * Searches the title, the category both raw and as displayed, the id, the
+ * owning team, and the summary. The id is there because it is the one string a
+ * coordinator copies out of the board and pastes back in; the summary because
+ * a row already reveals it on focus, so a reader who has seen those words will
+ * reasonably expect to be able to search them.
  */
 export function matchesQuery(incident: IncidentSummary, query: string): boolean {
   const q = query.trim().toLowerCase()
@@ -277,7 +292,8 @@ export function matchesQuery(incident: IncidentSummary, query: string): boolean 
     incident.category.toLowerCase().includes(q) ||
     categoryLabel(incident.category).toLowerCase().includes(q) ||
     incident.incident_id.toLowerCase().includes(q) ||
-    (incident.assigned_team_name ?? '').toLowerCase().includes(q)
+    (incident.assigned_team_name ?? '').toLowerCase().includes(q) ||
+    (incident.summary ?? '').toLowerCase().includes(q)
   )
 }
 

@@ -12,7 +12,6 @@ import { Outlet, useOutletContext } from 'react-router-dom'
 
 import { OpsNav } from '../components/OpsNav'
 import { useCampus } from '../lib/CampusContext'
-import { buildAttention } from '../lib/format'
 import {
   checkOverdue,
   listIncidents,
@@ -138,11 +137,6 @@ export function OpsLayout() {
     return result
   }, [refresh])
 
-  // Same function the queue band renders from, so the header count and the
-  // rows below it are always the same set.
-  const attention = buildAttention(incidents, reviews, now).length
-  const critical = incidents.filter((item) => item.priority === 'critical').length
-
   const context: OpsContext = {
     campus,
     incidents,
@@ -158,11 +152,7 @@ export function OpsLayout() {
 
   return (
     <>
-      <OpsNav
-        attention={attention}
-        critical={critical}
-        open={incidents.length}
-      />
+      <OpsNav />
 
       <main className="shell">
         {offline && (
