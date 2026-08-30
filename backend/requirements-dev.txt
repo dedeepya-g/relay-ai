@@ -1,0 +1,3 @@
+# Test-only dependencies. Not installed in the Cloud Run image.
+-r requirements.txt
+pytest>=8.0.0
