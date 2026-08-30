@@ -47,6 +47,14 @@ export default function App() {
   const [now, setNow] = useState(() => Date.now())
   const [loading, setLoading] = useState(true)
   const [offline, setOffline] = useState<OfflineError | null>(null)
+  /**
+   * A response that arrived and refused. Held separately from `offline`
+   * because the two call for opposite actions: one means start the server, the
+   * other means read what the running server said.
+   */
+  const [apiError, setApiError] = useState<string | null>(null)
+  /** Why the campus reference data is unavailable, if it is. */
+  const [campusError, setCampusError] = useState<string | null>(null)
 
   const [submitting, setSubmitting] = useState(false)
   const [intakeResult, setIntakeResult] = useState<ReportIntakeResult | null>(null)
@@ -57,29 +65,57 @@ export default function App() {
     return () => window.clearInterval(id)
   }, [])
 
+  /**
+   * Route a thrown value to the banner that describes it.
+   *
+   * Anything that is not an `OfflineError` reached the server and came back
+   * with an explanation, so that explanation is shown rather than swallowed.
+   */
+  const reportFailure = useCallback((caught: unknown) => {
+    if (caught instanceof OfflineError) {
+      setOffline(caught)
+      setApiError(null)
+      return
+    }
+    setOffline(null)
+    setApiError(
+      caught instanceof Error ? caught.message : 'Relay returned an error.',
+    )
+  }, [])
+
   const refresh = useCallback(async () => {
     try {
       const [incidentPage, reviewPage] = await Promise.all([listIncidents(), listReviews()])
       setIncidents(incidentPage.incidents)
       setReviews(reviewPage.reports)
       setOffline(null)
+      setApiError(null)
     } catch (caught) {
-      if (caught instanceof OfflineError) setOffline(caught)
+      reportFailure(caught)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [reportFailure])
 
   useEffect(() => {
     void (async () => {
       try {
         setCampus(await getCampus())
+        setCampusError(null)
       } catch (caught) {
-        if (caught instanceof OfflineError) setOffline(caught)
+        // Surfaced on the intake form as well as the banner: without this data
+        // there are no buildings to choose from, and an empty dropdown with no
+        // explanation reads as the campus having none.
+        setCampusError(
+          caught instanceof Error
+            ? caught.message
+            : 'Relay could not load the campus layout.',
+        )
+        reportFailure(caught)
       }
       await refresh()
     })()
-  }, [refresh])
+  }, [refresh, reportFailure])
 
   useEffect(() => {
     const id = window.setInterval(() => void refresh(), POLL_INTERVAL_MS)
@@ -92,9 +128,9 @@ export default function App() {
     try {
       setDetail(await getIncident(incidentId))
     } catch (caught) {
-      if (caught instanceof OfflineError) setOffline(caught)
+      reportFailure(caught)
     }
-  }, [])
+  }, [reportFailure])
 
   const handleSubmit = useCallback(
     async (input: SubmitReportInput) => {
@@ -174,15 +210,25 @@ export default function App() {
       <main className="shell">
         {offline && (
           <p className="notice" style={{ marginBottom: '1.25rem' }}>
-            <strong>Can’t reach the Relay API at {offline.baseUrl}.</strong>{' '}
+            <strong>No response from the Relay API at {offline.baseUrl}.</strong>{' '}
             Start it with <code>uvicorn main:app --port 8080</code> from the{' '}
             <code>backend</code> directory, then this page will pick up on its own.
+          </p>
+        )}
+
+        {/* The server answered, so it is running: repeating the start-it advice
+            here would send a reader to fix something that is not broken. */}
+        {apiError && (
+          <p className="notice" style={{ marginBottom: '1.25rem' }}>
+            <strong>Relay is running but returned an error.</strong>{' '}
+            {apiError}
           </p>
         )}
 
         {view === 'intake' && (
           <IntakeView
             campus={campus}
+            campusError={campusError}
             submitting={submitting}
             result={intakeResult}
             error={intakeError}

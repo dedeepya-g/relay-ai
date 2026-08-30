@@ -19,6 +19,13 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
 
+/**
+ * The server answered and refused.
+ *
+ * Distinct from `OfflineError` on purpose: this one means Relay is running and
+ * has something to say about why the request failed, and that explanation is
+ * worth more to a reader than any message the client could invent.
+ */
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -29,11 +36,23 @@ export class ApiError extends Error {
   }
 }
 
-/** True when the API could not be reached at all, as opposed to refusing. */
+/**
+ * The request never produced a response at all.
+ *
+ * Only thrown when `fetch` itself rejects, which means the browser could not
+ * complete the exchange: nothing listening, DNS or TLS failure, or a response
+ * it refused to hand over because it carried no CORS headers. Deliberately not
+ * used for a response that arrived carrying an error status -- that is an
+ * `ApiError`, and telling someone to start a server that is already running
+ * sends them to fix the wrong thing.
+ */
 export class OfflineError extends Error {
   readonly baseUrl = API_BASE_URL
   constructor() {
-    super(`Could not reach the Relay API at ${API_BASE_URL}`)
+    super(
+      `No response from the Relay API at ${API_BASE_URL}. It may not be ` +
+        `running, or it answered without the CORS headers the browser requires.`,
+    )
     this.name = 'OfflineError'
   }
 }
@@ -43,11 +62,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     response = await fetch(`${API_BASE_URL}${path}`, init)
   } catch {
+    // Only a transport-level failure reaches here. A 4xx or 5xx is a resolved
+    // response and falls through to the status check below.
     throw new OfflineError()
   }
 
   if (!response.ok) {
-    let detail = `Request to ${path} failed`
+    // Keep the status in the fallback: a non-JSON error body is usually a
+    // proxy or a crash, and the code is the only clue left.
+    let detail = `Request to ${path} failed (HTTP ${response.status})`
     try {
       const body = (await response.json()) as { detail?: unknown }
       if (typeof body.detail === 'string') detail = body.detail
