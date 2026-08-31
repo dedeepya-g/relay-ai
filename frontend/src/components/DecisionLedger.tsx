@@ -67,8 +67,31 @@ export function headline(entry: DecisionEntry): string {
       if (outcome.includes('to in_progress')) return 'Work started'
       if (outcome.includes('to on_hold')) return 'Put on hold'
       return 'Status changed'
-    case 'coordination':
-      return 'Followed up'
+    case 'coordination': {
+      // Two different records share this type and used to read identically.
+      // The coordinator writes one summary per invocation, and every tool it
+      // actually used writes its own entry, so a single follow-up can put two
+      // lines on the trail. "Relay considered this" and "Relay told the
+      // plumbing team" are different events and have to look it.
+      //
+      // Only the outcome is available to tell them apart: a tool's outcome is
+      // a sentence about what it did, while the summary's is the list of tool
+      // names it called, or one of two fixed strings.
+      const notified = outcome.match(/^notified (.+)$/)?.[1]
+      if (notified)
+        return notified === 'the assigned team'
+          ? 'Told the team'
+          : `Told ${tidy(notified)}`
+      if (outcome === 'asked the reporter for a missing detail')
+        return 'Asked the reporter a question'
+      // Deliberately not "Held for someone to check", which deduplication
+      // already uses. That is Relay declining to place the report; this is the
+      // agent having looked at the candidates and agreed a person is needed.
+      if (outcome === 'left for human review') return 'Confirmed a person is needed'
+      if (outcome === 'error') return 'Follow-up did not run'
+      if (outcome === 'no follow-up needed') return 'Reviewed, nothing needed'
+      return 'Reviewed what to do next'
+    }
     default:
       return 'Noted'
   }
