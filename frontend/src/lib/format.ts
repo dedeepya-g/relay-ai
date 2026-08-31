@@ -87,6 +87,22 @@ export function formatClock(iso: string): string {
   })
 }
 
+/**
+ * An exact date and time, for facts that must be told apart.
+ *
+ * Relative time collapses: a dozen incidents closed in the same minute all
+ * read "31m ago" and become indistinguishable. Where a timestamp identifies a
+ * record rather than describing recency, it is shown in full and in mono.
+ */
+export function formatStamp(iso: string): string {
+  return new Date(iso).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
 /** Elapsed time in the coarsest unit that still reads truthfully. */
 export function formatAge(iso: string, now: number): string {
   const seconds = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000))
@@ -144,6 +160,19 @@ export function buildAttention(
   now: number,
 ): AttentionItem[] {
   const flagged = incidents
+    // Product rule: work someone has actively picked up is never in the
+    // attention band, whatever its deadline or escalation level says.
+    //
+    // The band answers one question -- what is not being dealt with -- and an
+    // incident in progress has an answer already. A missed deadline on work
+    // underway is a fact about the deadline, not a call to action, and
+    // flagging it trains a reader to ignore the band. This is deliberate and
+    // permanent, not a way of quieting a noisy board: active human ownership
+    // outranks a stale timestamp.
+    //
+    // The row still shows that it is late. The information is not hidden,
+    // it just stops asking for someone.
+    .filter((incident) => incident.status !== 'in_progress')
     .map((incident) => ({ incident, reason: attentionReason(incident, now) }))
     .filter(
       (entry): entry is { incident: IncidentSummary; reason: AttentionReason } =>
@@ -251,4 +280,63 @@ export function locationLine(
   if (room) parts.push(`Room ${room}`)
   else if (floor) parts.push(floorLabel(floor))
   return parts.join(' · ')
+}
+
+/** How a list of incidents is ordered. */
+export type SortKey = 'priority' | 'newest' | 'oldest'
+
+export const SORT_LABELS: Record<SortKey, string> = {
+  priority: 'Priority',
+  newest: 'Newest first',
+  oldest: 'Oldest first',
+}
+
+/**
+ * Whether an incident matches a free-text query.
+ *
+ * Searches the title, the category both raw and as displayed, the id, the
+ * owning team, and the summary. The id is there because it is the one string a
+ * coordinator copies out of the board and pastes back in; the summary because
+ * a row already reveals it on focus, so a reader who has seen those words will
+ * reasonably expect to be able to search them.
+ */
+export function matchesQuery(incident: IncidentSummary, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return (
+    incident.title.toLowerCase().includes(q) ||
+    incident.category.toLowerCase().includes(q) ||
+    categoryLabel(incident.category).toLowerCase().includes(q) ||
+    incident.incident_id.toLowerCase().includes(q) ||
+    (incident.assigned_team_name ?? '').toLowerCase().includes(q) ||
+    (incident.summary ?? '').toLowerCase().includes(q)
+  )
+}
+
+/**
+ * Order incidents without mutating the caller's array.
+ *
+ * `timeOf` names which timestamp matters for this list: the queue sorts by
+ * when work arrived, the archive by when it finished. Priority sorting falls
+ * back to recency so equal priorities still have a stable, meaningful order.
+ */
+export function sortIncidents<T extends IncidentSummary>(
+  list: T[],
+  key: SortKey,
+  timeOf: (incident: T) => string,
+): T[] {
+  const copy = [...list]
+  if (key === 'priority') {
+    copy.sort(
+      (a, b) =>
+        PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] ||
+        new Date(timeOf(b)).getTime() - new Date(timeOf(a)).getTime(),
+    )
+    return copy
+  }
+  const direction = key === 'newest' ? -1 : 1
+  copy.sort(
+    (a, b) => direction * (new Date(timeOf(a)).getTime() - new Date(timeOf(b)).getTime()),
+  )
+  return copy
 }

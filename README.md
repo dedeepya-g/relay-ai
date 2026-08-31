@@ -1,12 +1,16 @@
 # Relay
- 
-Relay is an AI facilities coordination agent for university campuses. It reads
-maintenance reports written in plain language, recognises when several reports
-describe the same underlying fault, and carries each incident through
-prioritisation, routing, and dispatch while recording the reasoning behind
-every decision.
 
-## The Problem 
+Relay is an AI facilities coordination agent for university campuses. Someone
+reports a problem in their own words — a leaking ceiling, a door that will not
+latch, a light that keeps flickering — and Relay works out what the report is
+about, whether it is a new problem or another account of one already being
+worked on, how urgent it is, and which team owns it. It raises the work order,
+watches the deadline, and escalates if the deadline passes. When it genuinely
+cannot tell where a report belongs, it says so and asks a person, rather than
+guessing. Every decision it makes is written down with the reasoning behind it,
+so a coordinator can always answer why an incident was handled the way it was.
+
+## The problem
 
 Campus facilities portals collect reports through a flat category dropdown with
 no intelligence behind it, leaving a coordinator to read, classify, and route
@@ -19,7 +23,7 @@ so a worsening fault reads as a series of unrelated minor complaints. Facilities
 teams lose most of their time to this handoff gap rather than to the repairs
 themselves.
 
-## What Relay Does
+## What Relay does
 
 A submitted report passes through six stages.
 
@@ -39,99 +43,196 @@ A submitted report passes through six stages.
 6. **Dispatch.** A work order is raised with field instructions built from what
    each reporter actually said.
 
-Once those stages finish, the Incident Coordinator reads the resulting state
-and decides what follow-up it warrants: telling the assigned team about a
-priority change, running an escalation check, asking a reporter for a detail
-that would place an unplaceable report, or judging that nothing is needed. It
-cannot revisit any of the decisions above.
+Once those stages finish, the **Incident Coordinator** — a Google ADK agent —
+reads the resulting state and decides what should happen next, which the
+pipeline has no rule for. It can tell the assigned team that a priority moved,
+run an escalation sweep, ask a reporter for the one detail that would place an
+unplaceable report, place the report itself, or leave it for a person and say
+what they need to settle. These are real actions, not suggestions: each one
+writes to Firestore and records its own decision. It cannot revisit triage,
+deduplication, priority, or routing, and has no tools to do so.
 
 A separate sweep escalates any incident that passes its deadline, raising it
 through the campus escalation policy until it is resolved or reaches the
 configured maximum level.
 
-Every decision is recorded with its reasoning, what executed it, and the model
-behind it where there was one. Triage's classification is stored on the report
-itself. Together these are what an operator reads when asking why an incident
-was handled as it was.
+## How Relay decides
 
-## Architecture
-
-```mermaid
-flowchart TD
-    R["Report submitted"] --> T["Triage<br/><i>Gemini</i>"]
-    T --> S["Shortlist candidates<br/><i>Firestore query</i>"]
-    S --> D["Deduplicate<br/><i>Gemini</i>"]
-
-    D -->|same incident| M["Merge as evidence"]
-    D -->|different| O["Open new incident"]
-    D -->|uncertain| H["Pause for human review"]
-
-    M --> P["Prioritise + SLA<br/><i>rule</i>"]
-    O --> P
-    H -.->|person resolves| M
-    H -.->|person resolves| O
-
-    P --> RT["Route to team<br/><i>rule</i>"]
-    RT --> W["Dispatch work order<br/><i>rule</i>"]
-    W --> E["Escalate on breach<br/><i>rule</i>"]
-```
-
-Gemini is used for three things, each a judgement no rule can make: what a
-report is about, whether two reports describe one fault, and what follow-up an
-incident's new state warrants. Everything between them — priority, routing,
-dispatch, escalation — is deterministic rule application over campus
-configuration, so the same evidence always produces the same priority, the same
-team, and the same escalation. That is what makes an escalation defensible when
-someone asks why a work order jumped the queue.
-
-### Execution types
-
-Every decision Relay records names what executed it, because three different
-kinds of act would otherwise be indistinguishable in the audit trail.
+Relay mixes three kinds of execution on purpose, and every decision it records
+names which one produced it. Collapsing them would hide the architecture rather
+than describe it: a category judgement and a team lookup are not the same kind
+of act, and an auditor asking why a work order was routed somewhere deserves to
+see which one answered.
 
 | Executor | Role | Used by |
 | --- | --- | --- |
-| `model` | Probabilistic interpretation | Deduplication |
+| `model` | Probabilistic interpretation | Triage, deduplication |
 | `rule` | Deterministic policy | Priority, routing, escalation, status transitions |
 | `agent` | State-aware coordination | The Incident Coordinator |
 | `human` | Explicit human judgement | Resolving a paused report |
 
-A single report produces all three automated kinds in sequence: a model judges
-whether it duplicates an open incident, rules apply campus policy to set
-priority and choose a team, and the coordinator decides what follow-up the
-resulting state warrants. Triage is a model judgement too, but its output is
-stored on the report rather than as a separate decision record.
+**Gemini handles only what no rule can settle**: what a report is about, and
+whether two reports describe one physical fault. Everything between — priority,
+routing, dispatch, escalation — is deterministic policy applied to recorded
+evidence.
 
-**Why each piece.** Gemini handles the natural-language judgements the rest of
-the system deliberately avoids. Firestore holds reports, incidents, work
-orders, and the decision log, and its document model fits records that
-accumulate evidence over time. Cloud Storage is provisioned for report photos.
-The backend is FastAPI because the pipeline is typed request-response work,
-and Pydantic validation at the boundary means a malformed model response fails
-loudly rather than reaching the database. The frontend is a small React
-application because the operations view is read-heavy and needs live SLA
-counters.
+That split is a deliberate auditability choice, not a shortcut taken to avoid
+model calls. Priority and escalation are the claims a facilities manager is most
+likely to be challenged on, and a rule means the same evidence always produces
+the same answer: reproducible from the incident and the campus configuration
+alone, months later, without re-running anything. Asking a model to weigh
+urgency would make the most contested decision in the system the least
+explainable one.
 
-## Tech Stack
+**The agent occupies the gap the other two leave.** A rule cannot decide what to
+do about a report deduplication declined to place, because the whole point is
+that no rule fit. Left alone, such a report simply waits. The coordinator looks
+at the same evidence and often finds a better answer — ask the reporter one
+specific question, place the report itself, or agree that a human is genuinely
+needed and say what they must decide.
 
-- **Gemini 3.5 Flash** (via Vertex AI) — report classification, duplicate
-  detection, and the coordinator's reasoning
-- **Google ADK**: Powers Relay's Incident Coordinator, which observes evolving
-  incident state and selects constrained follow-up actions such as retrieving
-  incident context, requesting missing information, notifying teams of priority
-  changes, running escalation checks, or deliberately taking no action when the
-  current state does not require intervention.
+## A worked example: the report Relay refused to guess at
 
-  Relay intentionally separates model judgment, deterministic operational
-  policy, and agent coordination. Gemini handles ambiguous interpretation and
-  deduplication, rule-based services enforce reproducible priority and routing
-  policies, and the ADK coordinator decides what follow-up action is
-  appropriate after the incident state changes.
-- **Firestore** — reports, incidents, work orders, decision log
-- **Cloud Storage** — report photos; *bucket provisioned, upload not yet built*
-- **Cloud Run** — *target deployment; not yet deployed*
-- **FastAPI / Python 3.12+** — backend
-- **React / TypeScript / Vite** — operations dashboard
+This is live in the deployed system right now, and it is the clearest evidence
+of judgement in the project.
+
+Two card readers at Ridgeway Library and Commons were reported broken, at
+different entrances, and were correctly opened as two separate incidents:
+
+- `inc_63dd6783f2a3` — north entrance, `access`, `low`, 1 report
+- `inc_e9e259a2c470` — south entrance, `access`, `low`, 1 report
+
+A third report then arrived, `rpt_6e3670b66382`:
+
+> A card reader at one of the Ridgeway Library entrances rejected my badge three
+> times this morning. I usually come in through a side door and I genuinely
+> could not tell you whether it was the north or the south entrance.
+
+Deduplication declined to place it, and said why:
+
+> The reporter is unsure whether the malfunctioning card reader was at the north
+> or south entrance of the Ridgeway Library. Because there are two separate
+> active incidents for these locations — one for the south entrance card reader
+> (`inc_e9e259a2c470`) and one for the north entrance card reader
+> (`inc_63dd6783f2a3`) — we cannot assign this report to either without risking
+> a false match.
+
+This is the failure the verdict exists to prevent. Merging into the wrong one of
+two open incidents hides a live fault behind a ticket raised for a different
+one, and unlike splitting one problem into two tickets it does not correct
+itself: the second broken reader simply stops being visible to anyone.
+
+The coordinator then picked the report up, read **both** candidate incidents
+before deciding, and deliberately escalated to a person:
+
+> The reporter is unable to specify the entrance, so a human reviewer should
+> look up the user's badge attempt logs or coordinate with the technician
+> inspecting both library card readers.
+
+The report sits in `pending_review`, linked to no incident, and appears on
+`GET /reviews`. Its trail reads:
+
+| Decision | Executor | Outcome |
+| --- | --- | --- |
+| `triage` | `model` | classified as access, no urgency signals |
+| `deduplication` | `model` | paused for human review |
+| `flag_for_human_review` | `agent` | left for human review |
+| `incident_coordinator` | `agent` | `get_incident_state`, `get_incident_state`, `flag_for_human_review` |
+
+The last two rows are the point. The agent inspected both competing incidents,
+concluded that neither could be chosen on the evidence available, took a real
+action to park the report, and recorded both the action and its reasoning. That
+is a decision not to act autonomously — which is itself an autonomous decision,
+and the one most likely to be right here.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    FE["Operations dashboard<br/>React · TypeScript · Vite"]
+
+    subgraph CR["Cloud Run — us-east1 — relay-backend"]
+      API["FastAPI"]
+      PIPE["Deterministic pipeline<br/>triage → shortlist → deduplicate<br/>→ prioritise → route → dispatch"]
+      COORD["ADK Incident Coordinator<br/>LlmAgent + InMemoryRunner"]
+      TOOLS["Action tools<br/>merge_report · create_new_incident<br/>flag_for_human_review<br/>request_missing_information<br/>notify_team_priority_change<br/>run_escalation_sweep"]
+    end
+
+    GEM["Vertex AI<br/>Gemini 3.5 Flash"]
+    FS[("Firestore<br/>reports · incidents · work orders")]
+    TRAIL[("Decision trail<br/>model · rule · agent · human")]
+    GCS[("Cloud Storage<br/>photos — not yet wired")]
+
+    FE -->|VITE_API_BASE_URL| API
+    API --> PIPE --> COORD --> TOOLS
+    PIPE -.->|"triage · deduplicate"| GEM
+    COORD -.->|"reasoning · tool choice"| GEM
+    PIPE --> FS
+    TOOLS --> FS
+    API -. not implemented .-> GCS
+    PIPE ==>|every judgment| TRAIL
+    TOOLS ==>|every action| TRAIL
+```
+
+The decision trail is cross-cutting: every stage of the pipeline and every
+action the agent takes writes to it, which is what makes an incident's history
+readable end to end rather than reconstructed from logs.
+
+## What the decision log currently holds
+
+Live figures from Firestore, not targets:
+
+| Executor | Decisions |
+| --- | --- |
+| `rule` | 147 |
+| `model` | 85 |
+| `agent` | 36 |
+| `human` | 1 |
+| **Total** | **269** |
+
+Across seven decision types: triage, deduplication, prioritization, routing,
+escalation, resolution, and coordination.
+
+**On the human count.** The review loop closes end to end, demonstrated once: a
+reviewer answered a question the agent had asked and placed the report, and the
+resolution was recorded as a human judgement alongside the agent's original
+decision to ask. One instance is enough to show the path works, and not enough
+to call it exercised.
+
+**Coordinator coverage is 22 of 22 pipeline runs.** Every run since the
+coordinator was repaired has produced a coordination record, including one
+deliberately recorded with `outcome=error`. That entry exists because a failing
+coordinator and a coordinator that was never invoked used to look identical in
+the trail — the failure path returned before writing anything. It now records
+the exception and its traceback like any other outcome, so silence means the
+agent did not run, rather than that it broke quietly.
+
+Six of the coordinator's seven tools have fired against live data:
+`get_incident_state`, `merge_report`, `flag_for_human_review`,
+`request_missing_information`, `notify_team_priority_change`, and
+`run_escalation_sweep`. See [Known limitations](#known-limitations) for the
+seventh.
+
+## Tech stack
+
+- **Gemini 3.5 Flash**, via Vertex AI — two structured calls per report, one for
+  triage and one for deduplication, plus the coordinator's own reasoning.
+  Responses are parsed into Pydantic models, so a malformed answer fails at the
+  boundary instead of reaching the database.
+- **Google ADK** — the Incident Coordinator is an `LlmAgent` driven by an
+  `InMemoryRunner`, given seven tools and the freedom to use none of them.
+  Its tools wrap the pipeline's own tools rather than reimplementing them, so an
+  action the agent takes is the same action the pipeline would have taken, with
+  the same validation behind it.
+- **Firestore** (Native mode) — reports, incidents, work orders, campus
+  configuration, and the decision log. The document model suits records that
+  accumulate evidence over time.
+- **Cloud Run** — hosts the backend; see [Deployment](#deployment).
+- **Cloud Storage** — bucket provisioned for report photos. **Upload is not
+  implemented**; see [Known limitations](#known-limitations).
+- **FastAPI / Python 3.12+** — the pipeline is typed request-response work.
+- **React / TypeScript / Vite** — the operations dashboard, which is read-heavy
+  and needs live SLA counters.
 
 ## Setup
 
@@ -179,9 +280,14 @@ gcloud auth application-default login
 # Frontend
 cd frontend
 npm install
-cp .env.example .env.local                          # defaults to :8080
+cp .env.example .env.local     # defaults to the deployed backend
 npm run dev
 ```
+
+The frontend points at the deployed Cloud Run service by default, so a fresh
+clone runs against a live API with no backend setup at all. Change
+`VITE_API_BASE_URL` to `http://localhost:8080` to develop against a local
+backend instead.
 
 To confirm all three cloud dependencies are reachable before starting:
 
@@ -189,20 +295,97 @@ To confirm all three cloud dependencies are reachable before starting:
 cd backend && .venv/bin/python -m scripts.dev.verify_setup
 ```
 
+## Deployment
+
+The backend runs on Cloud Run:
+
+| | |
+| --- | --- |
+| URL | `https://relay-backend-256118957814.us-east1.run.app` |
+| Region | `us-east1` |
+| Revision | `relay-backend-00007-zlg` |
+| Runtime service account | Vertex AI User, Datastore User, Storage Object Admin |
+
+Deploy from `backend/`:
+
+```bash
+gcloud run deploy relay-backend --source . --region us-east1
+```
+
+`.gcloudignore` keeps the local virtualenv, bytecode, and `.env` out of the
+build context — the image installs its own dependencies from
+`requirements.txt`, and a shipped `.env` could silently override the environment
+variables set on the service.
+
+### Liveness: use `/health`, not `/healthz`
+
+```
+$ curl https://relay-backend-256118957814.us-east1.run.app/health
+{"status":"ok","service":"relay-api"}
+```
+
+**Known platform quirk, not a bug in Relay.** On a `*.run.app` domain, Google's
+frontend answers `GET /healthz` itself. The request returns a Google 404 and
+never reaches the container: the response carries no `x-cloud-trace-context`
+header, while every other path on the same service does. It is the exact string
+that is claimed — `/healthz/` redirects into the application and reaches it, and
+`/HEALTHZ` reaches it too. The route is registered and appears in the deployed
+OpenAPI schema, which is what makes the 404 look like an application fault.
+
+Both paths are served by the same handler. `/health` is what reports on the
+deployed service; `/healthz` remains the conventional name and works in the
+container and in local development.
+
 ## API
+
+Eleven routes, as deployed:
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/reports` | Submit a report and run it through the pipeline |
-| `GET` | `/incidents` | List incidents that are still live work |
+| `GET` | `/incidents` | List incidents; `?view=active` or `?view=archived` |
 | `GET` | `/incidents/{id}` | One incident with its reports and decision trail |
+| `POST` | `/incidents/{id}/status` | Move an incident through its lifecycle |
 | `POST` | `/reports/{id}/resolve` | Resolve a report awaiting human review |
+| `GET` | `/work_orders/{id}` | One dispatched work order |
 | `GET` | `/campus` | Buildings, floors, rooms, and maintenance teams |
 | `GET` | `/reviews` | Reports paused for human review |
 | `POST` | `/admin/check-overdue` | Run one pass of the escalation sweep |
-| `GET` | `/healthz` | Liveness probe |
+| `GET` | `/health` | Liveness probe (use this one) |
+| `GET` | `/healthz` | Liveness probe; unreachable on `*.run.app`, see above |
 
-Interactive documentation is served at `/docs` while the backend is running.
+Interactive documentation is served at `/docs`.
+
+## Known limitations
+
+Stated plainly, because a limitation found by a reader is worse than one
+declared by the authors.
+
+- **Photo upload is not implemented.** `upload_report_photo`,
+  `generate_signed_url`, and `delete_photo` in `services/storage_service.py`
+  raise `NotImplementedError`, and `POST /reports` returns `photo_stored: false`
+  for any photo it receives. The read side is finished: `download_photo` works
+  and triage already passes images to Gemini when a report has one, so the
+  multimodal path is built and simply unreachable until upload exists. No report
+  in Firestore currently has a photo.
+- **`create_new_incident` has not been observed firing against live data.** It
+  is one of the coordinator's seven tools and is wired identically to the six
+  that have fired, but the agent has not yet chosen it — opening a brand-new
+  incident for a report deduplication declined to place is the rarest of its
+  options. Treat it as untested in production rather than broken.
+- **There are no automated tests.** Verification so far has been end-to-end
+  against live Gemini and Firestore, which catches integration faults but leaves
+  no regression net. This is the largest gap in the project's engineering
+  discipline.
+- **Cloud Scheduler is not connected.** The escalation sweep runs only when
+  `POST /admin/check-overdue` is called by hand or from the dashboard. The
+  endpoint calls exactly the function a scheduler would call, with no shortcut
+  for being triggered manually, so connecting a schedule is configuration rather
+  than code — but until it is connected, nothing escalates unattended.
+- **Adding a field to a stored model breaks running revisions mid-deploy.**
+  Every Firestore model sets `extra="forbid"`, so an older revision cannot read
+  a document written by a newer one. Deploy before or alongside any model
+  change, not after.
 
 ## Team
 
@@ -212,6 +395,6 @@ Swetha Jalluri
 
 Likhitha Guntaka
 
-## Built For
+## Built for
 
 All Things Agentic Hackathon — Taskmaster track

@@ -81,7 +81,7 @@ def create_app() -> FastAPI:
     """
     application = FastAPI(
         title="Relay API",
-        description="AI campus facilities coordination agent for Relay University.",
+        description="AI facilities coordination agent for university campuses.",
         version="0.1.0",
         lifespan=lifespan,
     )
@@ -104,7 +104,15 @@ def create_app() -> FastAPI:
 app = create_app()
 
 
+#: Two paths, one handler. ``/healthz`` is the conventional name and is what
+#: works in-container and in local development, but on a ``*.run.app`` domain
+#: Google's frontend answers that exact path itself: the request returns a
+#: Google 404 with no ``x-cloud-trace-context`` header, meaning it never
+#: reaches the container at all. ``/health`` is not claimed, so it is the path
+#: that actually reports on the deployed service. Verified against both the
+#: legacy and current Cloud Run URLs.
 @app.get("/healthz", tags=["system"])
+@app.get("/health", tags=["system"])
 def health_check() -> dict[str, str]:
     """Liveness probe used by Cloud Run and the frontend's connection check."""
     return {"status": "ok", "service": "relay-api"}

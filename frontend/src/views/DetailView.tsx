@@ -4,12 +4,12 @@
  */
 import { useEffect, useState } from 'react'
 
-import { AttentionTag } from '../components/AttentionTag'
-import { DecisionLedger } from '../components/DecisionLedger'
+import { DecisionLedger, headline as ledgerHeadline } from '../components/DecisionLedger'
 import { PriorityToken } from '../components/PriorityToken'
 import { getWorkOrder } from '../lib/api'
 import {
   categoryLabel,
+  formatClock,
   formatCountdown,
   locationLine,
   secondsUntil,
@@ -17,6 +17,7 @@ import {
 } from '../lib/format'
 import type {
   Campus,
+  DecisionEntry,
   IncidentDetail,
   IncidentStatus,
   IncidentSummary,
@@ -34,6 +35,30 @@ interface DetailProps {
     newStatus: IncidentStatus,
     notes?: string,
   ) => Promise<void>
+}
+
+/**
+ * The most recent thing Relay did, at the top of the page.
+ *
+ * Reads the last stored decision -- the same record the trail below renders --
+ * and shows what happened, why, and when. Nothing is inferred and nothing is
+ * fetched: if the API returned no decisions, this renders nothing rather than
+ * inventing a summary of them.
+ */
+function LatestAction({ decisions }: { decisions: DecisionEntry[] }) {
+  if (decisions.length === 0) return null
+  const latest = decisions[decisions.length - 1]
+
+  return (
+    <section className="latest">
+      <span className="label latest__label">Latest</span>
+      <div className="latest__body">
+        <p className="latest__what">{ledgerHeadline(latest)}</p>
+        <p className="latest__why">{latest.rationale}</p>
+      </div>
+      <span className="latest__at">{formatClock(latest.created_at)}</span>
+    </section>
+  )
 }
 
 function Fact({ label, value }: { label: string; value: string }) {
@@ -123,15 +148,15 @@ function WorkOrderCard({ incident }: { incident: IncidentSummary }) {
   }, [key])
 
   return (
-    <div className="panel">
-      <div className="panel__head">
-        <h2 className="panel__title">Work orders</h2>
+    <>
+      <h2 className="sidepanel__title">
+        Work orders
         {orders !== null && orders.length > 0 && (
           <span className="label">
             {orders.length} {orders.length === 1 ? 'ticket' : 'tickets'}
           </span>
         )}
-      </div>
+      </h2>
 
       {orders === null ? (
         <div className="empty">Loading…</div>
@@ -165,7 +190,7 @@ function WorkOrderCard({ incident }: { incident: IncidentSummary }) {
                           minute: '2-digit',
                           hour12: false,
                         })
-                      : '—'
+                      : 'Not set'
                   }
                 />
               </div>
@@ -173,7 +198,7 @@ function WorkOrderCard({ incident }: { incident: IncidentSummary }) {
           ))}
         </div>
       )}
-    </div>
+    </>
   )
 }
 
@@ -220,11 +245,8 @@ function ActionsPanel({
   }
 
   return (
-    <div className="panel">
-      <div className="panel__head">
-        <h2 className="panel__title">Actions</h2>
-        <span className="label">{statusLabel(incident.status)}</span>
-      </div>
+    <>
+      <h2 className="sidepanel__title">Actions</h2>
 
       {actions.length === 0 ? (
         <div className="empty">
@@ -314,7 +336,7 @@ function ActionsPanel({
           )}
         </div>
       )}
-    </div>
+    </>
   )
 }
 
@@ -340,22 +362,26 @@ export function DetailView({
       <div className="detail__head">
         <h1 className="detail__title">{incident.title}</h1>
         <PriorityToken priority={incident.priority} />
-        {incident.escalation_level ? <AttentionTag reason="escalated" /> : null}
+        {/* Status once. An escalated incident would otherwise say so twice
+            here -- the pill and the tag carry the same word -- and the raise
+            level is reported in the panel beside it. */}
+        <span className="statuspill">{statusLabel(incident.status)}</span>
         <span className="idtag">{incident.incident_id}</span>
       </div>
       <p className="hint" style={{ marginBottom: '1.25rem' }}>
         {locationLine(building, incident.floor, incident.room)} ·{' '}
-        {categoryLabel(incident.category)} · {statusLabel(incident.status)}
+        {categoryLabel(incident.category)}
       </p>
+
+      <LatestAction decisions={decisions} />
 
       <div className="detail__grid">
         <div>
           <div className="panel">
             <div className="panel__head">
-              <h2 className="panel__title">Decision trail</h2>
+              <h2 className="panel__title">What happened</h2>
               <span className="label">
-                {decisions.length} {decisions.length === 1 ? 'decision' : 'decisions'} ·
-                grouped by report
+                {decisions.length} {decisions.length === 1 ? 'decision' : 'decisions'}
               </span>
             </div>
             <DecisionLedger
@@ -366,76 +392,63 @@ export function DetailView({
           </div>
         </div>
 
-        <aside style={{ display: 'grid', gap: '1.25rem' }}>
-          <div className="panel">
-            <div className="panel__head">
-              <h2 className="panel__title">Status</h2>
-            </div>
+        {/* One panel, hairline-divided. Four bordered boxes made four widgets
+            out of one incident; these are sections of the same record. */}
+        <aside className="panel sidepanel">
+          <section className="sidepanel__section">
             <div className="factgrid">
               <Fact label="Team" value={incident.assigned_team_name ?? 'Unassigned'} />
               <Fact
-                label="Evidence"
-                value={`${incident.report_count} ${
-                  incident.report_count === 1 ? 'report' : 'reports'
-                }`}
+                label="Reports"
+                value={String(incident.report_count)}
               />
               <Fact
                 label={remaining !== null && remaining < 0 ? 'Past deadline' : 'Deadline in'}
-                value={remaining === null ? '—' : formatCountdown(remaining)}
+                value={remaining === null ? 'None set' : formatCountdown(remaining)}
               />
-              {/* Shown only once raised: a level of zero is the normal case and
-                  would just be a column of noughts on every other incident. */}
               {incident.escalation_level ? (
-                <Fact label="Escalation" value={`Level ${incident.escalation_level}`} />
+                <Fact label="Raised" value={`Level ${incident.escalation_level}`} />
               ) : null}
             </div>
-          </div>
+          </section>
 
-          <ActionsPanel incident={incident} onChangeStatus={onChangeStatus} />
+          <section className="sidepanel__section">
+            <ActionsPanel incident={incident} onChangeStatus={onChangeStatus} />
+          </section>
 
-          <WorkOrderCard incident={incident} />
+          <section className="sidepanel__section">
+            <WorkOrderCard incident={incident} />
+          </section>
 
-          <div className="panel">
-            <div className="panel__head">
-              <h2 className="panel__title">What was reported</h2>
-              <span className="label">{reports.length} linked</span>
-            </div>
-            <div className="evidence">
-              {reports.length === 0 ? (
-                <div className="empty">
-                  <strong>No reports linked yet.</strong>
-                </div>
-              ) : (
-                reports.map((report) => (
-                  <div className="evidence__item" key={report.report_id}>
-                    <p className="evidence__text">“{report.description}”</p>
-                    <div className="evidence__meta">
-                      <span className="label">
-                        {locationLine(building, report.floor, report.room)}
-                      </span>
-                      {report.is_potential_emergency && (
-                        <span className="tag tag--overdue">Danger</span>
-                      )}
-                    </div>
-                    {report.severity_signals.length > 0 && (
-                      <p className="hint" style={{ marginTop: '0.3125rem' }}>
-                        Signals: {report.severity_signals.join('; ')}
-                      </p>
+          <section className="sidepanel__section">
+            <h2 className="sidepanel__title">
+              Reports <span className="label">{reports.length}</span>
+            </h2>
+            {reports.length === 0 ? (
+              <p className="hint">Nothing linked yet.</p>
+            ) : (
+              reports.map((report) => (
+                <div className="evidence__item" key={report.report_id}>
+                  <p className="evidence__text">“{report.description}”</p>
+                  <div className="evidence__meta">
+                    <span className="label">
+                      {locationLine(building, report.floor, report.room)}
+                    </span>
+                    {report.is_potential_emergency && (
+                      <span className="glyph">Danger</span>
                     )}
                   </div>
-                ))
-              )}
-            </div>
-          </div>
+                </div>
+              ))
+            )}
+          </section>
 
-          <div className="panel">
-            <div className="panel__head">
-              <h2 className="panel__title">Consolidated summary</h2>
-            </div>
-            <p style={{ padding: '0.875rem 1rem', fontSize: '0.875rem', whiteSpace: 'pre-line' }}>
-              {summary}
-            </p>
-          </div>
+          {summary && (
+            <section className="sidepanel__section">
+              <h2 className="sidepanel__title">Summary</h2>
+              <p className="evidence__text">{summary}</p>
+            </section>
+          )}
         </aside>
       </div>
     </>

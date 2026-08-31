@@ -1,4 +1,16 @@
 /**
+ * What happened to this incident, and why.
+ *
+ * Written to read like a colleague's notes rather than a system log. Each
+ * entry leads with what was decided, in plain words, and carries the reasoning
+ * underneath. Nothing names the machinery: a reader wants to know the report
+ * was sorted as plumbing, not which component sorted it.
+ *
+ * The one distinction worth keeping is whether a person was involved, and it
+ * is carried by placement -- a person's note steps out of the column and takes
+ * a filled marker -- rather than by a label repeating it on every row.
+ *
+ * (original note follows)
  * The decision ledger.
  *
  * Decisions are grouped under the report whose arrival triggered them, because
@@ -13,27 +25,70 @@
 import { formatClock, locationLine } from '../lib/format'
 import type { DecisionEntry, LinkedReport } from '../lib/types'
 
-const TYPE_LABELS: Record<string, string> = {
-  triage: 'Triage',
-  deduplication: 'Deduplication',
-  prioritization: 'Priority',
-  routing: 'Routing',
-  escalation: 'Escalation',
-  resolution: 'Resolution',
-  coordination: 'Coordination',
+/**
+ * What a decision did, in the words a coordinator would use.
+ *
+ * Built from the stored outcome, because the outcome names the specific thing
+ * decided and the type alone does not: "deduplication" is a category, "added
+ * to an existing issue" is what actually happened.
+ */
+export function headline(entry: DecisionEntry): string {
+  const outcome = entry.outcome ?? ''
+  const tidy = (value: string) =>
+    value
+      .replace(/^team_/, '')
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+
+  switch (entry.decision_type) {
+    case 'triage': {
+      const category = outcome.match(/classified as ([a-z_]+)/)?.[1]
+      return category ? `Sorted as ${tidy(category)}` : 'Read the report'
+    }
+    case 'deduplication':
+      if (outcome.includes('merged')) return 'Added to an existing issue'
+      if (outcome.includes('needs_review')) return 'Held for someone to check'
+      if (outcome.includes('opened') || outcome.includes('new_incident'))
+        return 'Opened a new issue'
+      return 'Checked against open issues'
+    case 'prioritization': {
+      const level = outcome.match(/(critical|high|medium|low)/)?.[1]
+      return level ? `Set to ${tidy(level)}` : 'Set the priority'
+    }
+    case 'routing': {
+      const team = outcome.match(/(team_[a-z_]+)/)?.[1]
+      return team ? `Sent to ${tidy(team)}` : 'Chose the team'
+    }
+    case 'escalation':
+      return 'Raised, still not picked up'
+    case 'resolution':
+      if (outcome.includes('to closed')) return 'Closed'
+      if (outcome.includes('to resolved')) return 'Marked resolved'
+      if (outcome.includes('to in_progress')) return 'Work started'
+      if (outcome.includes('to on_hold')) return 'Put on hold'
+      return 'Status changed'
+    case 'coordination':
+      return 'Followed up'
+    default:
+      return 'Noted'
+  }
 }
 
 /**
- * Relay mixes three kinds of execution deliberately, and a reader needs to
- * tell them apart: a model judging something ambiguous, a rule applying campus
- * policy, and the coordinating agent choosing a follow-up. A person is the
- * fourth, and keeps its own lane.
+ * Who made this call, phrased for someone reading a record.
+ *
+ * Shown only inside an opened entry. The distinction matters when a decision
+ * is questioned, and never enough to earn a badge on a line that is scanned.
  */
-const EXECUTOR_LABELS: Record<DecisionEntry['decided_by'], string> = {
-  model: 'Model',
-  rule: 'Rule',
-  agent: 'Agent',
-  human: 'Person',
+function decidedBy(entry: DecisionEntry): string {
+  switch (entry.decided_by) {
+    case 'human':
+      return 'Decided by a person.'
+    case 'rule':
+      return 'Applied from campus policy.'
+    default:
+      return 'Decided by Relay.'
+  }
 }
 
 interface Group {
@@ -95,9 +150,7 @@ export function DecisionLedger({ reports, decisions, buildingName }: LedgerProps
   if (groups.length === 0) {
     return (
       <div className="empty">
-        <strong>No decisions recorded yet.</strong>
-        Relay writes an entry here every time it classifies, merges, prioritizes, or
-        routes this incident.
+<strong>Nothing recorded yet.</strong>
       </div>
     )
   }
@@ -116,27 +169,32 @@ export function DecisionLedger({ reports, decisions, buildingName }: LedgerProps
               </p>
             </>
           ) : (
-            <p className="event__meta">Incident-level decisions</p>
+            <p className="event__meta">On the issue itself</p>
           )}
 
           {item.entries.map((entry) => (
-            <article
+            <details
               key={entry.decision_id}
               className={`entry entry--${entry.decided_by}`}
             >
-              <div className="entry__head">
-                <span className="entry__type">
-                  {TYPE_LABELS[entry.decision_type] ?? entry.decision_type}
+              {/* One line by default. These already happened, so the resting
+                  state is a record rather than a paragraph to read. */}
+              <summary className="entry__head">
+                <span className="entry__what">
+                  {headline(entry)}
+                  {entry.decided_by === 'human' && (
+                    <span className="entry__who"> · by someone here</span>
+                  )}
                 </span>
-                <span className={`entry__by entry__by--${entry.decided_by}`}>
-                  {EXECUTOR_LABELS[entry.decided_by] ?? entry.decided_by}
-                </span>
-                {/* The executor chip already says what decided this, so the
-                    model id is only worth showing when there is one. */}
-                {entry.model && <span className="entry__attr">{entry.model}</span>}
+                <span className="entry__at">{formatClock(entry.created_at)}</span>
+              </summary>
+              <div className="entry__detail">
+                <p className="entry__why">{entry.rationale}</p>
+                {/* Who made the call, for the reader who opens an entry and
+                    asks. Never the headline. */}
+                <p className="entry__by">{decidedBy(entry)}</p>
               </div>
-              <p className="entry__why">{entry.rationale}</p>
-            </article>
+            </details>
           ))}
         </section>
       ))}

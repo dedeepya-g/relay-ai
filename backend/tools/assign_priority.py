@@ -142,6 +142,58 @@ def _sla_due_at(incident: Incident, priority: Priority, config: CampusConfig):
     return incident.created_at + timedelta(minutes=minutes)
 
 
+#: How each level translates into what a coordinator should do about it. The
+#: entry headline already names the level, so this says what it means rather
+#: than repeating the word.
+_CONSEQUENCE = {
+    Priority.CRITICAL: "Needs someone now.",
+    Priority.HIGH: "Should be picked up soon.",
+    Priority.MEDIUM: "Worth attention, not urgent yet.",
+    Priority.LOW: "Can wait for the next round.",
+}
+
+
+def explain_priority(priority: Priority, reports: list[Report]) -> str:
+    """Say why this level, the way a coordinator would say it.
+
+    The counted-out computation stays in the decision's ``inputs`` for audit;
+    what gets read is the reason, not the arithmetic. "Priority medium because
+    1 urgency signal(s) reported" describes the machine's working. "Water is
+    pooling. Worth attention, not urgent yet." describes the situation.
+    """
+    signals = [
+        signal
+        for report in reports
+        if report.triage
+        for signal in report.triage.severity_signals
+    ]
+    dangerous = [
+        report
+        for report in reports
+        if report.triage and report.triage.is_potential_emergency
+    ]
+    count = len(reports)
+
+    if dangerous:
+        who = "Several people describe" if len(dangerous) > 1 else "Someone describes"
+        lead = f"{who} this as dangerous"
+        lead = f"{lead}: {signals[0]}." if signals else f"{lead}."
+    elif signals:
+        first = signals[0]
+        lead = f"{first[0].upper()}{first[1:]}."
+    else:
+        lead = "Nothing reported so far describes spread or danger."
+
+    if count >= 4:
+        corroboration = f" {count} people have reported it, which counts on its own."
+    elif count > 1:
+        corroboration = f" {count} people have reported it."
+    else:
+        corroboration = ""
+
+    return f"{lead}{corroboration} {_CONSEQUENCE[priority]}"
+
+
 def assign_priority(incident_id: str) -> dict[str, Any]:
     """Assign a priority to an incident and derive its SLA deadline.
 
@@ -178,7 +230,7 @@ def assign_priority(incident_id: str) -> dict[str, Any]:
 
     reports = list_reports_for_incident(incident_id)
     priority, reasons = evaluate_priority(reports)
-    rationale = f"Priority {priority.value} because " + "; ".join(reasons) + "."
+    rationale = explain_priority(priority, reports)
     due_at = _sla_due_at(incident, priority, config)
 
     updated = update_incident(

@@ -9,6 +9,7 @@ what the pipeline tests cover.
 from __future__ import annotations
 
 import logging
+from typing import Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 
@@ -16,6 +17,7 @@ from api.schemas import (
     BuildingOption,
     CampusResponse,
     DecisionEntry,
+    EscalationPolicyResponse,
     IncidentDetail,
     IncidentList,
     IncidentSummary,
@@ -34,17 +36,25 @@ from api.schemas import (
 )
 from agents.coordinator import coordinate
 from config import get_settings
-from models.common import DecisionType, IncidentStatus, Location, ReportStatus
+from models.common import (
+    DecisionType,
+    IncidentStatus,
+    Location,
+    Priority,
+    ReportStatus,
+)
 from models.incident import Incident
 from models.report import Report
 from services.firestore_service import (
+    ACTIVE_INCIDENT_STATUSES,
+    ARCHIVED_INCIDENT_STATUSES,
     create_report,
     get_campus_config,
     get_incident,
     get_report,
     get_work_order,
     list_decisions_for_subject,
-    list_open_incidents,
+    list_incidents_by_status,
     list_reports_by_status,
     list_reports_for_incident,
     update_report,
@@ -117,9 +127,12 @@ def _summarize(incident: Incident, team_names: dict[str, str]) -> IncidentSummar
         assigned_team_id=incident.assigned_team_id,
         assigned_team_name=team_names.get(incident.assigned_team_id or ""),
         report_count=len(incident.report_ids),
+        summary=incident.summary,
         work_order_ids=incident.work_order_ids,
         escalation_level=incident.escalation_level,
         sla_due_at=incident.sla_due_at,
+        resolved_at=incident.resolved_at,
+        closed_at=incident.closed_at,
         created_at=incident.created_at,
         updated_at=incident.updated_at,
     )
@@ -223,6 +236,7 @@ async def submit_report(
         )
         response.coordinator_actions = followup["actions"]
         response.coordinator_reasoning = followup["reasoning"] or None
+        response.coordinator_error = followup.get("error")
         placed = get_report(report.id)
         if placed is not None:
             response.report_status = placed.status
@@ -270,19 +284,33 @@ async def submit_report(
     )
     response.coordinator_actions = followup["actions"]
     response.coordinator_reasoning = followup["reasoning"] or None
+    response.coordinator_error = followup.get("error")
     return response
 
 
 @router.get("/incidents", response_model=IncidentList, tags=["incidents"])
 async def list_incidents(
-    limit: int = Query(default=50, ge=1, le=MAX_INCIDENTS)
+    limit: int = Query(default=50, ge=1, le=MAX_INCIDENTS),
+    view: Literal["active", "archived"] = Query(
+        default="active",
+        description="'active' is live work -- the dispatch view. 'archived' is "
+        "resolved and closed work.",
+    ),
 ) -> IncidentList:
-    """List incidents that are still live work, newest first.
+    """List incidents, newest first.
 
-    Resolved and closed incidents are omitted: this is the dispatch view, not
-    the archive.
+    Two named views rather than a free-form status filter: a caller asking for
+    an arbitrary combination of statuses would get a response whose meaning
+    depends on the request, and the board only ever wants one of these two.
+    Omitting the parameter returns live work, which is what this route has
+    always returned.
     """
-    incidents = list_open_incidents(get_settings().campus_id, limit=limit)
+    statuses = (
+        ACTIVE_INCIDENT_STATUSES if view == "active" else ARCHIVED_INCIDENT_STATUSES
+    )
+    incidents = list_incidents_by_status(
+        get_settings().campus_id, statuses, limit=limit
+    )
     team_names = _team_names()
     summaries = [_summarize(incident, team_names) for incident in incidents]
     return IncidentList(incidents=summaries, count=len(summaries))
@@ -453,12 +481,59 @@ async def resolve_report_review(
             status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"]
         )
 
-    return ResolveReviewResponse(
+    # A resolution places a report, which changes the evidence its incident
+    # rests on -- so priority is recomputed here exactly as it is on the
+    # automatic path. Without this, a report a person placed could be the
+    # fourth independent account of a fault and still leave the incident at
+    # the level it held when it was opened.
+    incident_id = result["incident_id"]
+    priority = assign_priority(incident_id)
+    if "error" in priority:
+        logger.warning(
+            "Could not recompute priority for %s after review: %s",
+            incident_id,
+            priority["error"],
+        )
+        return ResolveReviewResponse(
+            report_id=result["report_id"],
+            outcome=result["outcome"],
+            incident_id=incident_id,
+            resolved_by=result["resolved_by"],
+        )
+
+    response = ResolveReviewResponse(
         report_id=result["report_id"],
         outcome=result["outcome"],
-        incident_id=result["incident_id"],
+        incident_id=incident_id,
         resolved_by=result["resolved_by"],
+        priority=priority["priority"],
+        priority_changed=priority["changed"],
     )
+
+    # The second place the coordinator runs. A merge that pushes an incident to
+    # critical is a material change nobody has reacted to: the pipeline is not
+    # running, and the person who resolved the review was answering "where does
+    # this report belong", not "who needs telling now".
+    became_critical = (
+        priority["priority"] == Priority.CRITICAL.value
+        and priority["previous_priority"] != Priority.CRITICAL.value
+    )
+    if became_critical:
+        followup = await coordinate(
+            report_id=result["report_id"],
+            outcome=result["outcome"],
+            incident_id=incident_id,
+            previous_priority=priority["previous_priority"],
+            new_priority=priority["priority"],
+            dedup_reasoning="A reviewer placed this report by hand after Relay "
+            "declined to place it automatically.",
+            evidence_count=priority["evidence_count"],
+        )
+        response.coordinator_actions = followup["actions"]
+        response.coordinator_reasoning = followup["reasoning"] or None
+        response.coordinator_error = followup.get("error")
+
+    return response
 
 
 @router.get(
@@ -542,6 +617,12 @@ async def get_campus() -> CampusResponse:
             for team in config.teams
         ],
         sla_minutes=config.sla_minutes,
+        escalation_policy=EscalationPolicyResponse(
+            grace_period_minutes=config.escalation_policy.grace_period_minutes,
+            repeat_interval_minutes=config.escalation_policy.repeat_interval_minutes,
+            max_level=config.escalation_policy.max_level,
+            notify_on_escalation=config.escalation_policy.notify_on_escalation,
+        ),
     )
 
 

@@ -23,17 +23,19 @@ from __future__ import annotations
 
 import logging
 import os
+import traceback
 from functools import lru_cache
 from typing import Any
 
 from config import get_settings
-from models.common import DecisionActor, DecisionType
+from models.common import DecisionActor, DecisionType, ReportStatus, utc_now
 from models.decision import Decision
 from services.firestore_service import (
     get_incident,
     get_report,
     list_reports_for_incident,
     record_decision,
+    update_report,
 )
 from tools.escalate_overdue_incidents import escalate_overdue_incidents
 from tools.merge_report_into_incident import merge_report_into_incident
@@ -53,6 +55,42 @@ def _configure_backend() -> None:
     os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "true")
     os.environ.setdefault("GOOGLE_CLOUD_PROJECT", settings.project_id)
     os.environ.setdefault("GOOGLE_CLOUD_LOCATION", settings.gemini_location)
+
+
+def _record_action(
+    *,
+    campus_id: str,
+    subject_type: str,
+    subject_id: str,
+    outcome: str,
+    rationale: str,
+    tool_name: str,
+    inputs: dict[str, Any],
+) -> str:
+    """Write one agent action to the audit trail and return its decision id.
+
+    Every tool below that changes something calls this. Without it an action
+    the agent took would exist only as a log line: the state would move and the
+    trail would not say who moved it, which is the one thing the trail is for.
+    ``tool_name`` is the specific tool rather than ``incident_coordinator``, so
+    an action is distinguishable from the per-invocation summary
+    :func:`coordinate` records alongside it.
+    """
+    decision = record_decision(
+        Decision(
+            campus_id=campus_id,
+            decision_type=DecisionType.COORDINATION,
+            decided_by=DecisionActor.AGENT,
+            subject_type=subject_type,
+            subject_id=subject_id,
+            outcome=outcome,
+            rationale=rationale,
+            tool_name=tool_name,
+            model=get_settings().gemini_model,
+            inputs=inputs,
+        )
+    )
+    return decision.id
 
 
 # --- Tools ------------------------------------------------------------------
@@ -128,15 +166,31 @@ def notify_team_priority_change(
     if incident is None:
         return {"error": f"No incident {incident_id}."}
 
-    # Relay has no messaging integration. The notification is the durable
-    # record: it lands in the incident's trail where the team already looks,
-    # rather than a channel nobody has connected yet.
+    # Relay has no messaging integration, so the trail entry *is* the
+    # notification: it lands on the incident where the team already looks,
+    # rather than in a channel nobody has connected yet. That makes recording
+    # it the substance of this tool, not bookkeeping about it -- a log line
+    # would leave the team never told and the record showing nothing.
+    decision_id = _record_action(
+        campus_id=incident.campus_id,
+        subject_type="incidents",
+        subject_id=incident_id,
+        outcome=f"notified {incident.assigned_team_id or 'the assigned team'}",
+        rationale=reason,
+        tool_name="notify_team_priority_change",
+        inputs={
+            "previous_priority": previous_priority,
+            "new_priority": new_priority,
+            "notified_team_id": incident.assigned_team_id,
+        },
+    )
     logger.info(
-        "Coordinator notified %s: %s -> %s on %s",
+        "Coordinator notified %s: %s -> %s on %s (%s)",
         incident.assigned_team_id,
         previous_priority,
         new_priority,
         incident_id,
+        decision_id,
     )
     return {
         "notified_team_id": incident.assigned_team_id,
@@ -144,6 +198,7 @@ def notify_team_priority_change(
         "previous_priority": previous_priority,
         "new_priority": new_priority,
         "reason": reason,
+        "decision_id": decision_id,
     }
 
 
@@ -183,7 +238,30 @@ def request_missing_information(report_id: str, question: str) -> dict[str, Any]
     report = get_report(report_id)
     if report is None:
         return {"error": f"No report {report_id}."}
-    return {"report_id": report_id, "question": question, "awaiting_reporter": True}
+
+    # Persisted onto the report, not just recorded. A question that lives only
+    # in the decision history is one nobody answers: the person who picks this
+    # report up reads the report.
+    update_report(
+        report_id,
+        {"pending_question": question, "question_asked_at": utc_now()},
+    )
+    decision_id = _record_action(
+        campus_id=report.campus_id,
+        subject_type="reports",
+        subject_id=report_id,
+        outcome="asked the reporter for a missing detail",
+        rationale=question,
+        tool_name="request_missing_information",
+        inputs={"question": question, "report_status": report.status.value},
+    )
+    logger.info("Coordinator asked about %s: %s (%s)", report_id, question, decision_id)
+    return {
+        "report_id": report_id,
+        "question": question,
+        "awaiting_reporter": True,
+        "decision_id": decision_id,
+    }
 
 
 def merge_report(report_id: str, incident_id: str) -> dict[str, Any]:
@@ -231,7 +309,35 @@ def flag_for_human_review(report_id: str, reason: str) -> dict[str, Any]:
     Returns:
         Confirmation that the report remains in review.
     """
-    return {"report_id": report_id, "awaiting_human": True, "reason": reason}
+    report = get_report(report_id)
+    if report is None:
+        return {"error": f"No report {report_id}."}
+
+    # Actually park it. Deduplication may already have set this status, but the
+    # agent can also be asked about a report that reached it another way, and a
+    # tool whose whole promise is "this now waits for a person" must not depend
+    # on someone else having set that state.
+    if report.status is not ReportStatus.PENDING_REVIEW:
+        update_report(report_id, {"status": ReportStatus.PENDING_REVIEW.value})
+    decision_id = _record_action(
+        campus_id=report.campus_id,
+        subject_type="reports",
+        subject_id=report_id,
+        outcome="left for human review",
+        rationale=reason,
+        tool_name="flag_for_human_review",
+        inputs={
+            "previous_status": report.status.value,
+            "status": ReportStatus.PENDING_REVIEW.value,
+        },
+    )
+    logger.info("Coordinator left %s for review: %s (%s)", report_id, reason, decision_id)
+    return {
+        "report_id": report_id,
+        "awaiting_human": True,
+        "reason": reason,
+        "decision_id": decision_id,
+    }
 
 
 INSTRUCTION = """\
@@ -372,9 +478,11 @@ async def coordinate(
 
     Returns:
         A dict with ``actions`` (tool names the agent invoked, in order),
-        ``reasoning`` (its explanation), and ``decision_id``. Never raises: a
-        coordinator failure must not fail a report that was already accepted
-        and dispatched.
+        ``reasoning`` (its explanation), ``decision_id``, and ``error`` --
+        ``None`` on success, otherwise the exception that stopped it. Never
+        raises: a coordinator failure must not fail a report that was already
+        accepted and dispatched. It is always recorded, though, so a failure is
+        visible in the trail rather than absent from it.
     """
     from google.genai import types
 
@@ -382,6 +490,8 @@ async def coordinate(
     session_id = f"coord-{report_id}"
     actions: list[str] = []
     said: list[str] = []
+    failure: str | None = None
+    trace: str | None = None
 
     try:
         runner = _runner()
@@ -410,15 +520,24 @@ async def coordinate(
                 elif part.text:
                     said.append(part.text)
     except Exception as exc:  # noqa: BLE001 - follow-up must never fail intake
+        # Still caught, because the report has already been triaged, placed,
+        # and dispatched by this point and failing the request would discard
+        # work that succeeded. What changed is that the failure is no longer
+        # silent: it falls through to the same record_decision below as every
+        # other outcome, so "the coordinator broke" and "the coordinator was
+        # never called" stop looking identical in the trail. Previously this
+        # returned here, ahead of the record, and a broken coordinator left no
+        # evidence anywhere that it had run at all.
         logger.exception("Coordinator failed for report %s", report_id)
-        return {"actions": [], "reasoning": "", "error": str(exc)}
+        failure = f"{type(exc).__name__}: {exc}"
+        trace = traceback.format_exc()
 
     reasoning = " ".join(text.strip() for text in said if text.strip()).strip()
 
-    # One record per invocation, whether or not the agent acted. "Nothing
-    # needed following up, and here is why" is a decision a manager should be
-    # able to read, and without this the coordinator would be invisible
-    # exactly when it correctly does nothing.
+    # One record per invocation, whatever happened: the agent acted, judged
+    # that nothing needed doing, or failed. "Nothing needed following up, and
+    # here is why" is a decision a manager should be able to read, and a
+    # failure is one an engineer must be able to find.
     decision = record_decision(
         Decision(
             campus_id=campus_id or settings.campus_id,
@@ -426,8 +545,12 @@ async def coordinate(
             decided_by=DecisionActor.AGENT,
             subject_type="incidents" if incident_id else "reports",
             subject_id=incident_id or report_id,
-            outcome=", ".join(actions) if actions else "no follow-up needed",
-            rationale=reasoning or "The coordinator returned no explanation.",
+            outcome="error"
+            if failure
+            else (", ".join(actions) if actions else "no follow-up needed"),
+            rationale=failure
+            or reasoning
+            or "The coordinator returned no explanation.",
             tool_name="incident_coordinator",
             model=settings.gemini_model,
             inputs={
@@ -436,14 +559,26 @@ async def coordinate(
                 "previous_priority": previous_priority,
                 "new_priority": new_priority,
                 "actions_taken": actions,
+                # The stack trace goes in inputs rather than the rationale:
+                # rationale is what a facilities manager reads, and this is for
+                # whoever has to fix it. Firestore keeps it either way.
+                **({"traceback": trace} if trace else {}),
             },
         )
     )
 
-    logger.info(
-        "Coordinator on %s (%s): %s",
-        report_id,
-        outcome,
-        ", ".join(actions) if actions else "no action",
-    )
-    return {"actions": actions, "reasoning": reasoning, "decision_id": decision.id}
+    if failure:
+        logger.warning("Coordinator error recorded as %s: %s", decision.id, failure)
+    else:
+        logger.info(
+            "Coordinator on %s (%s): %s",
+            report_id,
+            outcome,
+            ", ".join(actions) if actions else "no action",
+        )
+    return {
+        "actions": actions,
+        "reasoning": reasoning,
+        "decision_id": decision.id,
+        "error": failure,
+    }

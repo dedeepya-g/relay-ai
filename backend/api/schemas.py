@@ -73,6 +73,13 @@ class ReportIntakeResponse(RelaySchema):
         default=None,
         description="The coordinator's own explanation of what it decided.",
     )
+    coordinator_error: str | None = Field(
+        default=None,
+        description="Set when the coordinator failed. The report itself was "
+        "still accepted, triaged, and dispatched -- only the follow-up step "
+        "broke -- but a caller should be able to tell that apart from a "
+        "coordinator that judged no follow-up was needed.",
+    )
     work_order_ticket: str | None = Field(
         default=None,
         description="Dispatch ticket raised for the owning team; null while a "
@@ -107,6 +114,11 @@ class IncidentSummary(RelaySchema):
         "configuration so callers never have to map team ids themselves.",
     )
     report_count: int
+    summary: str = Field(
+        default="",
+        description="Plain-language description of the incident, shown when a "
+        "row is focused so a reader can tell what it is without opening it.",
+    )
     work_order_ids: list[str] = Field(
         default_factory=list,
         description="Work orders dispatched for this incident, newest last. "
@@ -119,6 +131,14 @@ class IncidentSummary(RelaySchema):
         "incident; 0 means never escalated.",
     )
     sla_due_at: datetime | None = None
+    resolved_at: datetime | None = Field(
+        default=None,
+        description="When the incident was resolved; null while it is live.",
+    )
+    closed_at: datetime | None = Field(
+        default=None,
+        description="When the incident was closed; null until it is.",
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -254,6 +274,22 @@ class ResolveReviewResponse(RelaySchema):
     outcome: str = Field(description="'merged' or 'new_incident'.")
     incident_id: str
     resolved_by: str = Field(description="Always 'human' for this endpoint.")
+    priority: Priority | None = Field(
+        default=None,
+        description="The incident's priority after the resolution, recomputed "
+        "from the evidence the resolution added.",
+    )
+    priority_changed: bool = Field(
+        default=False, description="Whether that recomputation moved the level."
+    )
+    coordinator_actions: list[str] = Field(
+        default_factory=list,
+        description="Follow-up the coordinator took. Populated only when the "
+        "resolution pushed the incident to critical, which is the one case "
+        "where a human placing a report warrants an agent looking at it again.",
+    )
+    coordinator_reasoning: str | None = None
+    coordinator_error: str | None = None
 
 
 # --- Campus reference data --------------------------------------------------
@@ -287,6 +323,22 @@ class TeamOption(RelaySchema):
     coverage_hours: str
 
 
+class EscalationPolicyResponse(RelaySchema):
+    """How this campus reacts when an incident misses its deadline."""
+
+    grace_period_minutes: int = Field(
+        description="Slack after the deadline before the first escalation."
+    )
+    repeat_interval_minutes: int = Field(
+        description="Interval between successive escalations while still overdue."
+    )
+    max_level: int = Field(description="Level at which Relay stops raising.")
+    notify_on_escalation: list[str] = Field(
+        default_factory=list,
+        description="Addresses notified at every escalation level.",
+    )
+
+
 class CampusResponse(RelaySchema):
     """Reference data a client needs to submit a report and label a queue.
 
@@ -301,6 +353,7 @@ class CampusResponse(RelaySchema):
     buildings: list[BuildingOption]
     teams: list[TeamOption]
     sla_minutes: dict[Priority, int]
+    escalation_policy: EscalationPolicyResponse
 
 
 class PendingReview(RelaySchema):

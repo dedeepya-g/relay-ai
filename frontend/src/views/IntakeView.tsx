@@ -8,6 +8,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { CategoryGlyph } from '../components/CategoryGlyph'
 import { PriorityToken } from '../components/PriorityToken'
 import { categoryLabel, floorLabel } from '../lib/format'
 import type { Campus, ReportIntakeResult } from '../lib/types'
@@ -35,9 +36,9 @@ interface IntakeProps {
 }
 
 const OUTCOME_HEADLINE: Record<string, string> = {
-  new_incident: 'Opened a new incident',
-  merged: 'Added to an incident already being worked',
-  needs_review: 'Held for a person to place',
+  new_incident: 'Opened a new issue',
+  merged: 'Added to work already underway',
+  needs_review: 'Someone will take a look',
 }
 
 export function IntakeView({
@@ -83,36 +84,41 @@ export function IntakeView({
         </div>
         <div className="factgrid">
           <div>
-            <span className="label">Classified as</span>
-            <p className="fact__value">{categoryLabel(result.issue_type)}</p>
+            <span className="label">Issue</span>
+            <p className="fact__value fact__value--glyph">
+              <CategoryGlyph category={result.issue_type} />
+              {categoryLabel(result.issue_type)}
+            </p>
           </div>
           <div>
-            <span className="label">Priority</span>
-            <p className="fact__value">
+            <span className="label">Urgency</span>
+            <p className="fact__value fact__value--glyph">
               {result.priority ? (
-                <PriorityToken priority={result.priority} />
+                <>
+                  <PriorityToken priority={result.priority} />
+                  {result.priority[0].toUpperCase() + result.priority.slice(1)}
+                </>
               ) : (
-                'Not set until placed'
+                'Set once someone places it'
               )}
             </p>
           </div>
           <div>
             <span className="label">Team</span>
-            <p className="fact__value">{result.team_name ?? 'Awaiting a decision'}</p>
+            <p className="fact__value">{result.team_name ?? 'Not yet assigned'}</p>
           </div>
         </div>
 
         <div style={{ padding: '0 1rem 1rem' }}>
           <span className="label" style={{ display: 'block', marginBottom: '0.25rem' }}>
-            Why
+            What happens next
           </span>
           <p style={{ fontSize: '0.875rem', maxWidth: '64ch' }}>
             {result.reasoning.deduplication ?? result.reasoning.triage}
           </p>
           {result.photo_received && !result.photo_stored && (
             <p className="hint" style={{ marginTop: '0.75rem' }}>
-              Your photo was received but not kept — photo storage is not built yet, so
-              Relay classified this from the text alone.
+              Your photo came through but isn't kept yet. We read your description.
             </p>
           )}
           <div className="review__actions" style={{ marginTop: '1rem' }}>
@@ -135,9 +141,25 @@ export function IntakeView({
   }
 
   return (
-    <form
+    <>
+      {/* Answers the question a category-picker would otherwise force: what
+          kind of problem is this? Nothing here asks the reporter to decide. */}
+      <header className="intro">
+        <span className="label intro__eyebrow">Report an issue</span>
+        <h1 className="display intro__title">Just tell us what’s wrong.</h1>
+        <p className="intro__sub">
+          We read what you wrote, work out what kind of problem it is, and send it
+          to the team that handles it.
+        </p>
+        <p className="intro__note">
+          There’s no category to choose and no form to hunt through. Describe it in
+          the box below, in your own words.
+        </p>
+      </header>
+
+      <form
       className="panel form"
-      style={{ marginTop: '1.5rem', maxWidth: '44rem' }}
+      style={{ maxWidth: '44rem' }}
       onSubmit={(event) => {
         event.preventDefault()
         void onSubmit({
@@ -161,7 +183,7 @@ export function IntakeView({
 
       <div className="field">
         <label className="label" htmlFor="description">
-          What is wrong?
+          What’s wrong?
         </label>
         <textarea
           id="description"
@@ -173,9 +195,6 @@ export function IntakeView({
           placeholder="Water is leaking inside the third-floor restroom."
           required
         />
-        <p className="hint">
-          Plain words are fine. Relay reads this the way you wrote it.
-        </p>
       </div>
 
       <div className="field__row">
@@ -240,7 +259,7 @@ export function IntakeView({
             {rooms.map((item) => (
               <option key={item.number} value={item.number}>
                 {item.number}
-                {item.name ? ` — ${item.name}` : ''}
+                {item.name ? `, ${item.name}` : ''}
               </option>
             ))}
           </select>
@@ -258,7 +277,7 @@ export function IntakeView({
           accept="image/*"
           onChange={(event) => setPhoto(event.target.files?.[0] ?? null)}
         />
-        <p className="hint">Accepted, but not stored yet — Relay will read your text.</p>
+        <p className="hint">Not kept yet. We’ll go on your description.</p>
       </div>
 
       {error && <p className="notice">{error}</p>}
@@ -279,6 +298,7 @@ export function IntakeView({
           </p>
         )}
       </div>
-    </form>
+      </form>
+    </>
   )
 }

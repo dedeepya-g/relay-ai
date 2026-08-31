@@ -188,18 +188,19 @@ def escalate_overdue_incidents(campus_id: str) -> dict[str, Any]:
             },
         )
 
+        contacts = [
+            address.split("@")[0].replace(".", " ").title()
+            for address in policy.notify_on_escalation
+        ]
+        told = " and ".join(filter(None, [", ".join(contacts[:-1]), contacts[-1]])) if contacts else ""
         rationale = (
-            f"{incident.priority.value.title()} incident passed its "
-            f"{policy.grace_period_minutes}-minute grace period and is "
-            f"{minutes_over} minutes past its deadline with no resolution. "
-            f"Raised to escalation level {level} of {policy.max_level} and "
-            f"{', '.join(policy.notify_on_escalation) or 'the escalation contacts'} "
-            "were notified."
+            f"{minutes_over} minutes past its deadline and still not picked up."
+            + (f" Passed to {told}." if told else "")
         )
-        if supporting_ticket:
-            rationale += (
-                f" A critical incident this far past deadline is a safety "
-                f"exposure, so {second_team} was brought in on {supporting_ticket}."
+        if second_team:
+            crew = second_team.removeprefix("team_").replace("_", " ").title()
+            rationale += f" Brought in {crew} as well" + (
+                f", on {supporting_ticket}." if supporting_ticket else "."
             )
 
         record_decision(
