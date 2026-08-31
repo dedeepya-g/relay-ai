@@ -31,7 +31,7 @@ export function Landing() {
           <p className="hero__sub">
             Relay reads maintenance reports written in plain language, works out
             which ones describe the same underlying fault, and carries each problem
-            through prioritisation, routing, and dispatch — keeping a record of why
+            through prioritisation, routing, and dispatch, keeping a record of why
             each call was made.
           </p>
           <div className="hero__actions">
@@ -90,9 +90,9 @@ export function Landing() {
           <h2 className="display band__title">What Relay does</h2>
           <p className="stages__lede">
             Two of these six are judgement calls. The rest apply the campus's own
-            written policy, so the same evidence always produces the same answer —
-            and an escalation stays defensible when someone asks why a work order
-            jumped the queue.
+            written policy, so the same evidence always produces the same answer. An
+            escalation stays defensible when someone asks why a work order jumped
+            the queue.
           </p>
         </div>
 
@@ -116,7 +116,7 @@ export function Landing() {
             <h2 className="display band__title">Every call, on the record</h2>
             <p className="stages__lede">
               Each incident carries the reasoning behind every decision made about
-              it — including the ones a person made. This is the actual view.
+              it, including the ones a person made. This is the actual view.
             </p>
           </div>
           <LedgerProof />

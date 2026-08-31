@@ -14,11 +14,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { ListControls } from '../../components/ListControls'
 import { CategoryGlyph } from '../../components/CategoryGlyph'
+import { CategoryTabs } from '../../components/CategoryTabs'
 import { ClearBoard } from '../../components/ClearBoard'
 import { useOps } from '../../layouts/OpsLayout'
 import { listIncidents } from '../../lib/api'
 import {
   formatAge,
+  formatStamp,
   matchesQuery,
   sortIncidents,
   statusLabel,
@@ -33,6 +35,7 @@ export function ArchivePage() {
   const [incidents, setIncidents] = useState<IncidentSummary[] | null>(null)
 
   const query = params.get('q') ?? ''
+  const category = params.get('cat')
   const sortParam = params.get('sort')
   const sort: SortKey =
     sortParam === 'priority' || sortParam === 'oldest' ? sortParam : 'newest'
@@ -65,8 +68,9 @@ export function ArchivePage() {
   const resolved = incidents?.filter((i) => i.status === 'resolved').length ?? 0
   const closed = incidents?.filter((i) => i.status === 'closed').length ?? 0
 
+  const searched = (incidents ?? []).filter((incident) => matchesQuery(incident, query))
   const visible = sortIncidents(
-    (incidents ?? []).filter((incident) => matchesQuery(incident, query)),
+    category ? searched.filter((incident) => incident.category === category) : searched,
     sort,
     finishedAt,
   )
@@ -92,7 +96,13 @@ export function ArchivePage() {
         placeholder="Search finished work…"
       />
 
-      <div className="panel">
+      <CategoryTabs
+        incidents={searched}
+        active={category}
+        onSelect={(next) => setParam('cat', next)}
+      />
+
+      <div className="rowlist">
         {incidents === null ? (
           <div className="empty">
             <strong>Reading the archive…</strong>
@@ -127,12 +137,17 @@ export function ArchivePage() {
                 <span className="row__peek">{incident.summary}</span>
               </span>
 
-              <span className="glyph row__finished">
-                {statusLabel(incident.status).toLowerCase()}{' '}
-                {formatAge(
-                  incident.closed_at ?? incident.resolved_at ?? incident.updated_at,
-                  now,
-                )}
+              {/* The moment the work finished, in full. Relative time collapses
+                  here -- a dozen rows closed in the same minute all read the
+                  same -- so it moves to the title instead of leading. */}
+              <span
+                className="row__finished"
+                title={`${statusLabel(incident.status)} ${formatAge(finishedAt(incident), now)}`}
+              >
+                <span className="row__stamp">{formatStamp(finishedAt(incident))}</span>
+                <span className="row__state">
+                  {statusLabel(incident.status).toLowerCase()}
+                </span>
               </span>
             </button>
           ))

@@ -141,9 +141,25 @@ export function IntakeView({
   }
 
   return (
-    <form
+    <>
+      {/* Answers the question a category-picker would otherwise force: what
+          kind of problem is this? Nothing here asks the reporter to decide. */}
+      <header className="intro">
+        <span className="label intro__eyebrow">Report an issue</span>
+        <h1 className="display intro__title">Just tell us what’s wrong.</h1>
+        <p className="intro__sub">
+          We read what you wrote, work out what kind of problem it is, and send it
+          to the team that handles it.
+        </p>
+        <p className="intro__note">
+          There’s no category to choose and no form to hunt through. Describe it in
+          the box below, in your own words.
+        </p>
+      </header>
+
+      <form
       className="panel form"
-      style={{ marginTop: '1.5rem', maxWidth: '44rem' }}
+      style={{ maxWidth: '44rem' }}
       onSubmit={(event) => {
         event.preventDefault()
         void onSubmit({
@@ -179,9 +195,6 @@ export function IntakeView({
           placeholder="Water is leaking inside the third-floor restroom."
           required
         />
-        <p className="hint">
-          Plain words are fine. Say it however you'd say it out loud.
-        </p>
       </div>
 
       <div className="field__row">
@@ -246,7 +259,7 @@ export function IntakeView({
             {rooms.map((item) => (
               <option key={item.number} value={item.number}>
                 {item.number}
-                {item.name ? ` — ${item.name}` : ''}
+                {item.name ? `, ${item.name}` : ''}
               </option>
             ))}
           </select>
@@ -264,7 +277,7 @@ export function IntakeView({
           accept="image/*"
           onChange={(event) => setPhoto(event.target.files?.[0] ?? null)}
         />
-        <p className="hint">Not kept yet — we'll go on your description.</p>
+        <p className="hint">Not kept yet. We’ll go on your description.</p>
       </div>
 
       {error && <p className="notice">{error}</p>}
@@ -285,6 +298,7 @@ export function IntakeView({
           </p>
         )}
       </div>
-    </form>
+      </form>
+    </>
   )
 }

@@ -32,7 +32,7 @@ const ENTRIES = [
   },
   {
     headline: 'Set to Critical',
-    why: 'Two people describe this as dangerous — water spreading toward an outlet. 4 people have reported it, which counts on its own. Needs someone now.',
+    why: 'Two people describe this as dangerous: water spreading toward an outlet. 4 people have reported it, which counts on its own. Needs someone now.',
     human: false,
   },
   {

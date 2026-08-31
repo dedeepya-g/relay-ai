@@ -331,18 +331,11 @@ p {
   margin: 2rem 0 0.625rem;
 }
 
-.attention {
-  border-left: 3px solid var(--alert);
-}
-
-.attention--calm {
-  border-left-color: var(--line);
-}
-
 .row {
   display: grid;
-  /* Four things: how urgent, what it is, where, how long left. */
-  grid-template-columns: auto minmax(0, 1fr) minmax(0, 14rem) 5.5rem;
+  /* What a row needs for a scan: urgency, what it is, where, who has it,
+     how much evidence, how long left. */
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 11rem) minmax(0, 8rem) 5rem 5.5rem;
   gap: 0.875rem;
   align-items: center;
   width: 100%;
@@ -545,7 +538,8 @@ p {
   top: 0.9375rem;
   width: 7px;
   height: 7px;
-  border: 1.5px solid var(--accent);
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
   background: var(--surface);
 }
 
@@ -1977,3 +1971,312 @@ a.btn {
 @media (max-width: 60rem) {
   .proofband__inner { grid-template-columns: minmax(0, 1fr); gap: 2rem; }
 }
+
+/* --- Trail entries, collapsed ---------------------------------------------
+ * A decision shows one line: what happened and when. The reasoning is a click
+ * away, which keeps a twenty-entry trail scannable.
+ */
+
+.entry { padding: 0.375rem 0 0.375rem 1.125rem; }
+
+.entry__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  cursor: pointer;
+  list-style: none;
+  margin: 0;
+}
+
+.entry__head::-webkit-details-marker { display: none; }
+.entry__head:hover .entry__what { color: var(--accent); }
+
+.entry__what { flex: 1 1 auto; transition: color 160ms ease; }
+
+.entry__at {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.entry__detail { padding: 0.375rem 0 0.25rem; }
+
+.entry__by {
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.entry[open]::before { border-color: var(--accent); }
+
+/* --- Detail: one record, not four widgets --------------------------------- */
+
+.statuspill {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.125rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+}
+
+/* Relay's last action, read straight from the newest stored decision. */
+.latest {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.875rem 1rem;
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.latest__label { flex: 0 0 auto; }
+.latest__body { flex: 1 1 auto; min-width: 0; }
+.latest__what { font-weight: 500; font-size: 0.9375rem; }
+
+.latest__why {
+  margin-top: 0.125rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 76ch;
+}
+
+.latest__at {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* Sections of one panel, separated by a hairline rather than by a gap and a
+   second border. */
+.sidepanel { display: block; }
+
+.sidepanel__section {
+  padding: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.sidepanel__section:first-child { border-top: 0; }
+.sidepanel__section .factgrid { padding: 0; }
+
+.sidepanel__title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.625rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.sidepanel__section .evidence__item { padding: 0.625rem 0; }
+.sidepanel__section .evidence__item:first-of-type { padding-top: 0; border-top: 0; }
+.sidepanel__section .empty { padding: 0.5rem 0; text-align: left; margin: 0; }
+
+/* Tighter overall rhythm: the page is a record to scan, not a stack of cards. */
+.detail__grid { gap: 1.5rem; }
+.detail__head { margin: 0.5rem 0 0.125rem; }
+.ledger { padding: 0.25rem 1rem 0.75rem; }
+.event { padding: 0.75rem 0 0.125rem 1.5rem; }
+
+.row__team {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row__num {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  text-align: right;
+}
+
+.row__numlabel { font-family: var(--font-sans); }
+
+/* Narrow: the columns that repeat what the title already implies drop first. */
+@media (max-width: 72rem) {
+  .row { grid-template-columns: auto minmax(0, 1fr) minmax(0, 11rem) 5rem 5.5rem; }
+  .row__team { display: none; }
+}
+
+@media (max-width: 56rem) {
+  .row { grid-template-columns: auto minmax(0, 1fr) 5.5rem; }
+  .row__num { display: none; }
+}
+
+/* --- Category tabs --------------------------------------------------------
+ * Plain text with an underline for the active one, the same signal the
+ * navigation uses. No tiles, no cards: a tab strip should read as a filter on
+ * the list beneath it, not as a second navigation.
+ */
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  margin: 1rem 0 0.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.tab {
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.5rem 0 0.625rem;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  box-shadow: inset 0 -2px 0 transparent;
+  transition: color 160ms ease, box-shadow 160ms ease;
+}
+
+.tab:hover { color: var(--ink); }
+
+.tab--on {
+  color: var(--ink);
+  font-weight: 500;
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.tab__n {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.tab--on .tab__n { color: var(--accent); }
+
+/* --- Archive: when work finished ------------------------------------------ */
+
+.row__finished {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.0625rem;
+}
+
+.row__stamp {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.row__state {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.row--archive { grid-template-columns: auto minmax(0, 1fr) auto; }
+
+/* --- Report framing -------------------------------------------------------
+ * A short text block, not a module. No card, no icon, no illustration: the
+ * point is that there is nothing to decide before the box below, and adding
+ * a visual step here would argue the opposite.
+ */
+
+.intro {
+  max-width: 40rem;
+  margin: 3rem 0 1.75rem;
+}
+
+.intro__eyebrow {
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+.intro__title {
+  font-size: clamp(1.75rem, 3.4vw, 2.25rem);
+  line-height: 1.1;
+  color: var(--ink);
+}
+
+.intro__sub {
+  margin-top: 0.875rem;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 48ch;
+}
+
+/* The anxiety this page exists to remove, answered last and plainly. */
+.intro__note {
+  margin-top: 0.625rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 52ch;
+}
+
+/* --- Row lists ------------------------------------------------------------
+ * Rows sit on the page rather than inside a card. The group is not an object:
+ * it is a run of rows, so it gets no border, no fill, and no radius, and the
+ * heading above it needs no container to belong to it.
+ *
+ * The accent that used to run the full height of a group as one bar now sits
+ * on each row, carrying that row's own priority. A signal about an incident
+ * belongs to the incident, not to the box it happens to be drawn in.
+ */
+
+.rowlist {
+  border-top: 1px solid var(--line);
+}
+
+.rowlist .row,
+.rowlist .review,
+.rowlist .disclose {
+  background: transparent;
+  border-top: 0;
+  border-bottom: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  box-shadow: none;
+}
+
+/* Priority, per row, on the same ramp the meter uses. */
+.rowlist .row--critical { border-left-color: var(--alert); }
+.rowlist .row--high { border-left-color: var(--ink); }
+.rowlist .row--medium { border-left-color: var(--muted); }
+.rowlist .row--low { border-left-color: var(--line); }
+
+.rowlist .row:hover,
+.rowlist .row:focus-visible,
+.rowlist .disclose__row:hover {
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.rowlist .review__head:hover { background: var(--surface); }
+
+.rowlist .empty {
+  border-bottom: 1px solid var(--line);
+}
+
+/* A section heading sits on the page directly above its rows. */
+.section-head { margin: 1.75rem 0 0.5rem; }
+
+/* Content blocks keep their shape without a card: a hairline and the page. */
+.block { border-top: 1px solid var(--line); }
+
+.block__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem 0.25rem;
+}
+
+.block .factgrid { padding: 0.75rem 1rem 1rem; }
+.block .factgrid + .factgrid { border-top: 1px solid var(--line); }

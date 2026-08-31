@@ -32,7 +32,7 @@ import type { DecisionEntry, LinkedReport } from '../lib/types'
  * decided and the type alone does not: "deduplication" is a category, "added
  * to an existing issue" is what actually happened.
  */
-function headline(entry: DecisionEntry): string {
+export function headline(entry: DecisionEntry): string {
   const outcome = entry.outcome ?? ''
   const tidy = (value: string) =>
     value
@@ -60,7 +60,7 @@ function headline(entry: DecisionEntry): string {
       return team ? `Sent to ${tidy(team)}` : 'Chose the team'
     }
     case 'escalation':
-      return 'Raised — still not picked up'
+      return 'Raised, still not picked up'
     case 'resolution':
       if (outcome.includes('to closed')) return 'Closed'
       if (outcome.includes('to resolved')) return 'Marked resolved'
@@ -71,6 +71,23 @@ function headline(entry: DecisionEntry): string {
       return 'Followed up'
     default:
       return 'Noted'
+  }
+}
+
+/**
+ * Who made this call, phrased for someone reading a record.
+ *
+ * Shown only inside an opened entry. The distinction matters when a decision
+ * is questioned, and never enough to earn a badge on a line that is scanned.
+ */
+function decidedBy(entry: DecisionEntry): string {
+  switch (entry.decided_by) {
+    case 'human':
+      return 'Decided by a person.'
+    case 'rule':
+      return 'Applied from campus policy.'
+    default:
+      return 'Decided by Relay.'
   }
 }
 
@@ -156,18 +173,28 @@ export function DecisionLedger({ reports, decisions, buildingName }: LedgerProps
           )}
 
           {item.entries.map((entry) => (
-            <article
+            <details
               key={entry.decision_id}
               className={`entry entry--${entry.decided_by}`}
             >
-              <p className="entry__head">
-                {headline(entry)}
-                {entry.decided_by === 'human' && (
-                  <span className="entry__who"> · by someone here</span>
-                )}
-              </p>
-              <p className="entry__why">{entry.rationale}</p>
-            </article>
+              {/* One line by default. These already happened, so the resting
+                  state is a record rather than a paragraph to read. */}
+              <summary className="entry__head">
+                <span className="entry__what">
+                  {headline(entry)}
+                  {entry.decided_by === 'human' && (
+                    <span className="entry__who"> · by someone here</span>
+                  )}
+                </span>
+                <span className="entry__at">{formatClock(entry.created_at)}</span>
+              </summary>
+              <div className="entry__detail">
+                <p className="entry__why">{entry.rationale}</p>
+                {/* Who made the call, for the reader who opens an entry and
+                    asks. Never the headline. */}
+                <p className="entry__by">{decidedBy(entry)}</p>
+              </div>
+            </details>
           ))}
         </section>
       ))}

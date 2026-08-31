@@ -75,7 +75,14 @@ function IncidentRow({
   const soon = remaining !== null && !over && remaining <= dueSoonSeconds(incident)
 
   return (
-    <button type="button" className="row enter" onClick={() => onOpen(incident.incident_id)}>
+    <button
+      type="button"
+      // The left edge carries this row's own priority, on the same ramp the
+      // meter uses, so the signal belongs to the incident rather than to a
+      // container drawn around a group of them.
+      className={`row row--${incident.priority} enter`}
+      onClick={() => onOpen(incident.incident_id)}
+    >
       <PriorityToken priority={incident.priority} />
 
       <span className="row__main">
@@ -94,10 +101,19 @@ function IncidentRow({
         )}
       </span>
 
+      <span className="row__team">{incident.assigned_team_name ?? 'Unassigned'}</span>
+
+      <span className="row__num">
+        {incident.report_count}
+        <span className="row__numlabel">
+          {incident.report_count === 1 ? ' report' : ' reports'}
+        </span>
+      </span>
+
       <span className={`row__sla${over ? ' row__sla--over' : soon ? ' row__sla--soon' : ''}`}>
         {raised && <span className="dot dot--raised" aria-label="Raised" />}
         {!raised && soon && <span className="dot dot--soon" aria-label="Due soon" />}
-        {remaining === null ? '—' : formatCountdown(remaining)}
+        {remaining === null ? 'None' : formatCountdown(remaining)}
       </span>
     </button>
   )
@@ -328,7 +344,7 @@ export function QueueView({
             <SweepButton sweeping={sweeping} note={sweepNote} onRun={runSweep} />
           </span>
         </div>
-        <div className="panel">
+        <div className="rowlist">
           {incidents.length === 0 ? (
             <div className="empty empty--art">
               <ClearBoard />
@@ -361,7 +377,7 @@ export function QueueView({
         </span>
       </div>
 
-      <div className={`panel attention${attention.length === 0 ? ' attention--calm' : ''}`}>
+      <div className="rowlist">
         {attention.length === 0 ? (
           <div className="empty empty--art">
             <ClearBoard />
@@ -397,7 +413,7 @@ export function QueueView({
           <div className="section-head">
             <h2 className="panel__title">Open incidents</h2>
           </div>
-          <div className="panel">
+          <div className="rowlist">
             <div className="empty empty--art">
               <ClearBoard />
               <strong>Nothing open.</strong>
@@ -414,7 +430,7 @@ export function QueueView({
                 {list.length} {list.length === 1 ? 'incident' : 'incidents'}
               </span>
             </div>
-            <div className="panel">
+            <div className="rowlist">
               {list.map((incident) => (
                 <IncidentRow
                   key={incident.incident_id}

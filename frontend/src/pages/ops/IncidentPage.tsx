@@ -50,7 +50,7 @@ export function IncidentPage() {
 
   if (missing) {
     return (
-      <div className="panel">
+      <div className="rowlist">
         <div className="empty">
           <strong>That incident could not be opened.</strong>
           {missing}
@@ -61,7 +61,7 @@ export function IncidentPage() {
 
   if (!detail) {
     return (
-      <div className="panel">
+      <div className="rowlist">
         <div className="empty">
           <strong>Opening the incident…</strong>
         </div>

@@ -42,7 +42,7 @@ export function QueuePage() {
 
   if (loading) {
     return (
-      <div className="panel">
+      <div className="rowlist">
         <div className="empty">
           <strong>Reading the board…</strong>
         </div>

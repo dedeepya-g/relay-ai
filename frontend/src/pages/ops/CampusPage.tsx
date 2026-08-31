@@ -34,7 +34,7 @@ export function CampusPage() {
 
   if (loading) {
     return (
-      <div className="panel">
+      <div className="rowlist">
         <div className="empty">
           <strong>Reading the campus configuration…</strong>
         </div>
@@ -44,7 +44,7 @@ export function CampusPage() {
 
   if (!campus) {
     return (
-      <div className="panel">
+      <div className="rowlist">
         <div className="empty">
           <strong>No campus configuration is available.</strong>
           {error ?? 'Seed one with scripts/seed_campus_config.py.'}
@@ -69,8 +69,8 @@ export function CampusPage() {
         Every call on the board is made against these values.
       </p>
 
-      <div className="panel">
-        <div className="panel__head">
+      <div className="block">
+        <div className="block__head">
           <h3 className="panel__title">Response policy</h3>
           <span className="label">and what happens when they pass</span>
         </div>
@@ -120,7 +120,7 @@ export function CampusPage() {
           {campus.teams.length} {campus.teams.length === 1 ? 'team' : 'teams'}
         </span>
       </div>
-      <div className="panel">
+      <div className="rowlist">
         {campus.teams.map((team) => (
           <details className="disclose" key={team.team_id}>
             <summary className="disclose__row">
@@ -157,7 +157,7 @@ export function CampusPage() {
         </span>
       </div>
 
-      <div className="panel">
+      <div className="rowlist">
         {campus.buildings.map((building) => (
           <details className="disclose" key={building.building_id}>
             <summary className="disclose__row">

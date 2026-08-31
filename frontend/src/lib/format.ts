@@ -87,6 +87,22 @@ export function formatClock(iso: string): string {
   })
 }
 
+/**
+ * An exact date and time, for facts that must be told apart.
+ *
+ * Relative time collapses: a dozen incidents closed in the same minute all
+ * read "31m ago" and become indistinguishable. Where a timestamp identifies a
+ * record rather than describing recency, it is shown in full and in mono.
+ */
+export function formatStamp(iso: string): string {
+  return new Date(iso).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
 /** Elapsed time in the coarsest unit that still reads truthfully. */
 export function formatAge(iso: string, now: number): string {
   const seconds = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000))
