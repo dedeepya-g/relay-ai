@@ -177,7 +177,7 @@ def explain_priority(priority: Priority, reports: list[Report]) -> str:
     if dangerous:
         who = "Several people describe" if len(dangerous) > 1 else "Someone describes"
         lead = f"{who} this as dangerous"
-        lead = f"{lead} — {signals[0]}." if signals else f"{lead}."
+        lead = f"{lead}: {signals[0]}." if signals else f"{lead}."
     elif signals:
         first = signals[0]
         lead = f"{first[0].upper()}{first[1:]}."

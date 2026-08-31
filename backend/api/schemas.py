@@ -73,6 +73,13 @@ class ReportIntakeResponse(RelaySchema):
         default=None,
         description="The coordinator's own explanation of what it decided.",
     )
+    coordinator_error: str | None = Field(
+        default=None,
+        description="Set when the coordinator failed. The report itself was "
+        "still accepted, triaged, and dispatched -- only the follow-up step "
+        "broke -- but a caller should be able to tell that apart from a "
+        "coordinator that judged no follow-up was needed.",
+    )
     work_order_ticket: str | None = Field(
         default=None,
         description="Dispatch ticket raised for the owning team; null while a "
@@ -262,6 +269,22 @@ class ResolveReviewResponse(RelaySchema):
     outcome: str = Field(description="'merged' or 'new_incident'.")
     incident_id: str
     resolved_by: str = Field(description="Always 'human' for this endpoint.")
+    priority: Priority | None = Field(
+        default=None,
+        description="The incident's priority after the resolution, recomputed "
+        "from the evidence the resolution added.",
+    )
+    priority_changed: bool = Field(
+        default=False, description="Whether that recomputation moved the level."
+    )
+    coordinator_actions: list[str] = Field(
+        default_factory=list,
+        description="Follow-up the coordinator took. Populated only when the "
+        "resolution pushed the incident to critical, which is the one case "
+        "where a human placing a report warrants an agent looking at it again.",
+    )
+    coordinator_reasoning: str | None = None
+    coordinator_error: str | None = None
 
 
 # --- Campus reference data --------------------------------------------------

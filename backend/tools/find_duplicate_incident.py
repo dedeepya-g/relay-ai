@@ -61,9 +61,21 @@ list. Set matched_incident_id to that incident's id, exactly as given.
 different_incident -- the new report describes a separate problem. Sharing a \
 building, a floor, or a category is not a match on its own.
 
-needs_review -- the evidence genuinely supports either reading and a wrong \
-guess would cost more than a human glance. Prefer this to a coin flip. Do not \
-use it merely because the reporter was vague.
+needs_review -- the evidence genuinely supports more than one reading and a \
+wrong guess would cost more than a human glance. Prefer this to a coin flip. \
+Do not use it merely because the reporter was vague: vagueness on its own is \
+not ambiguity, and a report that clearly belongs somewhere still belongs there \
+however briefly it was written.
+
+The case that most often belongs here is competition between candidates, not \
+same-versus-new. When two or more candidates each account for the report and \
+nothing in it separates them -- the same kind of fault, the same building, and \
+the one detail that would tell them apart is exactly what the reporter did not \
+give -- do not simply take the closest match. Merging into the wrong one of two \
+open incidents hides a live fault behind a ticket raised for a different one, \
+and unlike a split it does not correct itself: the second fault stops being \
+visible to anyone. Name the candidates that compete and the single detail that \
+would settle it.
 
 What counts as the same problem:
 

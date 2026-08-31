@@ -36,7 +36,13 @@ from api.schemas import (
 )
 from agents.coordinator import coordinate
 from config import get_settings
-from models.common import DecisionType, IncidentStatus, Location, ReportStatus
+from models.common import (
+    DecisionType,
+    IncidentStatus,
+    Location,
+    Priority,
+    ReportStatus,
+)
 from models.incident import Incident
 from models.report import Report
 from services.firestore_service import (
@@ -186,6 +192,7 @@ async def submit_report(
         )
         response.coordinator_actions = followup["actions"]
         response.coordinator_reasoning = followup["reasoning"] or None
+        response.coordinator_error = followup.get("error")
         placed = get_report(report.id)
         if placed is not None:
             response.report_status = placed.status
@@ -233,6 +240,7 @@ async def submit_report(
     )
     response.coordinator_actions = followup["actions"]
     response.coordinator_reasoning = followup["reasoning"] or None
+    response.coordinator_error = followup.get("error")
     return response
 
 
@@ -428,12 +436,59 @@ async def resolve_report_review(
             status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"]
         )
 
-    return ResolveReviewResponse(
+    # A resolution places a report, which changes the evidence its incident
+    # rests on -- so priority is recomputed here exactly as it is on the
+    # automatic path. Without this, a report a person placed could be the
+    # fourth independent account of a fault and still leave the incident at
+    # the level it held when it was opened.
+    incident_id = result["incident_id"]
+    priority = assign_priority(incident_id)
+    if "error" in priority:
+        logger.warning(
+            "Could not recompute priority for %s after review: %s",
+            incident_id,
+            priority["error"],
+        )
+        return ResolveReviewResponse(
+            report_id=result["report_id"],
+            outcome=result["outcome"],
+            incident_id=incident_id,
+            resolved_by=result["resolved_by"],
+        )
+
+    response = ResolveReviewResponse(
         report_id=result["report_id"],
         outcome=result["outcome"],
-        incident_id=result["incident_id"],
+        incident_id=incident_id,
         resolved_by=result["resolved_by"],
+        priority=priority["priority"],
+        priority_changed=priority["changed"],
     )
+
+    # The second place the coordinator runs. A merge that pushes an incident to
+    # critical is a material change nobody has reacted to: the pipeline is not
+    # running, and the person who resolved the review was answering "where does
+    # this report belong", not "who needs telling now".
+    became_critical = (
+        priority["priority"] == Priority.CRITICAL.value
+        and priority["previous_priority"] != Priority.CRITICAL.value
+    )
+    if became_critical:
+        followup = await coordinate(
+            report_id=result["report_id"],
+            outcome=result["outcome"],
+            incident_id=incident_id,
+            previous_priority=priority["previous_priority"],
+            new_priority=priority["priority"],
+            dedup_reasoning="A reviewer placed this report by hand after Relay "
+            "declined to place it automatically.",
+            evidence_count=priority["evidence_count"],
+        )
+        response.coordinator_actions = followup["actions"]
+        response.coordinator_reasoning = followup["reasoning"] or None
+        response.coordinator_error = followup.get("error")
+
+    return response
 
 
 @router.get(

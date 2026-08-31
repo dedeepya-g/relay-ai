@@ -76,6 +76,19 @@ class Report(RelayModel):
         "signals and stated uncertainty behind the classification.",
     )
 
+    pending_question: str | None = Field(
+        default=None,
+        max_length=500,
+        description="A question the coordinator put back to the reporter, "
+        "usually a location detail that would let the report be placed. Stored "
+        "on the report rather than only in the trail so the question is "
+        "answerable: whoever picks the report up can see what was asked "
+        "without reading the decision history.",
+    )
+    question_asked_at: datetime | None = Field(
+        default=None, description="When ``pending_question`` was raised."
+    )
+
     # --- Timestamps ---------------------------------------------------------
     submitted_at: datetime = Field(default_factory=utc_now)
     triaged_at: datetime | None = Field(
