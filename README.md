@@ -99,8 +99,8 @@ of judgement in the project.
 Two card readers at Ridgeway Library and Commons were reported broken, at
 different entrances, and were correctly opened as two separate incidents:
 
-- `inc_63dd6783f2a3` — north entrance, `access`, `low`, 1 report
-- `inc_e9e259a2c470` — south entrance, `access`, `low`, 1 report
+- `inc_63dd6783f2a3` — north entrance, `access`, `low`
+- `inc_e9e259a2c470` — south entrance, `access`, `low`
 
 A third report then arrived, `rpt_6e3670b66382`:
 
