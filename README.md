@@ -161,7 +161,7 @@ flowchart LR
     GEM["Vertex AI<br/>Gemini 3.5 Flash"]
     FS[("Firestore<br/>reports · incidents · work orders")]
     TRAIL[("Decision trail<br/>model · rule · agent · human")]
-    GCS[("Cloud Storage<br/>photos — not yet wired")]
+    GCS[("Cloud Storage<br/>report photos")]
 
     FE -->|VITE_API_BASE_URL| API
     API --> PIPE --> COORD --> TOOLS
@@ -169,7 +169,8 @@ flowchart LR
     COORD -.->|"reasoning · tool choice"| GEM
     PIPE --> FS
     TOOLS --> FS
-    API -. not implemented .-> GCS
+    API -->|upload on submit| GCS
+    GCS -.->|photo for triage| GEM
     PIPE ==>|every judgment| TRAIL
     TOOLS ==>|every action| TRAIL
 ```
@@ -228,8 +229,9 @@ seventh.
   configuration, and the decision log. The document model suits records that
   accumulate evidence over time.
 - **Cloud Run** — hosts the backend; see [Deployment](#deployment).
-- **Cloud Storage** — bucket provisioned for report photos. **Upload is not
-  implemented**; see [Known limitations](#known-limitations).
+- **Cloud Storage** — report photos, uploaded on submit and read back through
+  short-lived signed URLs. A stored photo is passed to Gemini alongside the
+  report text, so triage classifies from the picture as well as the words.
 - **FastAPI / Python 3.12+** — the pipeline is typed request-response work.
 - **React / TypeScript / Vite** — the operations dashboard, which is read-heavy
   and needs live SLA counters.
@@ -303,7 +305,7 @@ The backend runs on Cloud Run:
 | --- | --- |
 | URL | `https://relay-backend-256118957814.us-east1.run.app` |
 | Region | `us-east1` |
-| Revision | `relay-backend-00007-zlg` |
+| Revision | `relay-backend-00008-77b` |
 | Runtime service account | Vertex AI User, Datastore User, Storage Object Admin |
 
 Deploy from `backend/`:
@@ -361,22 +363,18 @@ Interactive documentation is served at `/docs`.
 Stated plainly, because a limitation found by a reader is worse than one
 declared by the authors.
 
-- **Photo upload is not implemented.** `upload_report_photo`,
-  `generate_signed_url`, and `delete_photo` in `services/storage_service.py`
-  raise `NotImplementedError`, and `POST /reports` returns `photo_stored: false`
-  for any photo it receives. The read side is finished: `download_photo` works
-  and triage already passes images to Gemini when a report has one, so the
-  multimodal path is built and simply unreachable until upload exists. No report
-  in Firestore currently has a photo.
 - **`create_new_incident` has not been observed firing against live data.** It
   is one of the coordinator's seven tools and is wired identically to the six
   that have fired, but the agent has not yet chosen it — opening a brand-new
   incident for a report deduplication declined to place is the rarest of its
   options. Treat it as untested in production rather than broken.
-- **There are no automated tests.** Verification so far has been end-to-end
-  against live Gemini and Firestore, which catches integration faults but leaves
-  no regression net. This is the largest gap in the project's engineering
-  discipline.
+- **Test coverage is deterministic logic only.** The suite is 48 passing tests
+  (`cd backend && .venv/bin/python -m pytest`) over priority evaluation, the
+  escalation sweep, status transitions, deduplication candidate ranking, and the
+  models. That is the half of the system where a rule must be reproducible. The
+  model calls and the agent's tool selection are covered only by end-to-end runs
+  against live Gemini and Firestore, which catch integration faults but leave no
+  regression net around the judgement itself.
 - **Cloud Scheduler is not connected.** The escalation sweep runs only when
   `POST /admin/check-overdue` is called by hand or from the dashboard. The
   endpoint calls exactly the function a scheduler would call, with no shortcut
