@@ -1,0 +1,16 @@
+# Files not uploaded to Cloud Build when deploying with `gcloud run deploy
+# --source`. Without this the local virtualenv ships with the source, which is
+# both enormous and wrong: the image installs its own dependencies from
+# requirements.txt.
+.gcloudignore
+.git
+.gitignore
+
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Local configuration. Cloud Run gets its settings from service env vars, and
+# shipping a .env would let a stale local value silently win over them.
+.env
