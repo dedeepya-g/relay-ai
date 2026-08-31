@@ -389,9 +389,9 @@ declared by the authors.
 
 Dedeepya Guntaka
 
-Swetha Jalluri
-
 Likhitha Guntaka
+
+Swetha Jalluri
 
 ## Built for
 
