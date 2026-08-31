@@ -181,18 +181,21 @@ readable end to end rather than reconstructed from logs.
 
 ## What the decision log currently holds
 
-Live figures from Firestore, not targets:
+Live figures from Firestore, not targets. Over 270 decisions recorded, across
+seven types — triage, deduplication, prioritization, routing, escalation,
+resolution, and coordination — and the shape of them is the point:
 
-| Executor | Decisions |
-| --- | --- |
-| `rule` | 147 |
-| `model` | 85 |
-| `agent` | 36 |
-| `human` | 1 |
-| **Total** | **269** |
+| Executor | Share | What it decided |
+| --- | --- | --- |
+| `rule` | roughly half | Priority, routing, escalation, status transitions |
+| `model` | roughly a third | Triage and deduplication |
+| `agent` | most of the rest | The coordinator's follow-up calls and actions |
+| `human` | one | A reviewer settling a report Relay declined to place |
 
-Across seven decision types: triage, deduplication, prioritization, routing,
-escalation, resolution, and coordination.
+The exact totals climb every time a report is submitted, so they are deliberately
+not pinned here. Read the current ones straight from the source:
+`GET /incidents/{id}` returns the full decision trail for any incident, each
+entry naming what decided it.
 
 **On the human count.** The review loop closes end to end, demonstrated once: a
 reviewer answered a question the agent had asked and placed the report, and the
@@ -200,8 +203,8 @@ resolution was recorded as a human judgement alongside the agent's original
 decision to ask. One instance is enough to show the path works, and not enough
 to call it exercised.
 
-**Coordinator coverage is 22 of 22 pipeline runs.** Every run since the
-coordinator was repaired has produced a coordination record, including one
+**Every pipeline run since the coordinator was repaired has produced a
+coordination record** — complete coverage, no run unaccounted for — including one
 deliberately recorded with `outcome=error`. That entry exists because a failing
 coordinator and a coordinator that was never invoked used to look identical in
 the trail — the failure path returned before writing anything. It now records
