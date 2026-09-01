@@ -10,6 +10,8 @@ cannot tell where a report belongs, it says so and asks a person, rather than
 guessing. Every decision it makes is written down with the reasoning behind it,
 so a coordinator can always answer why an incident was handled the way it was.
 
+Take a look at how it works:  https://devpost.com/software/relay-73wz6f
+
 ## The problem
 
 Campus facilities portals collect reports through a flat category dropdown with
